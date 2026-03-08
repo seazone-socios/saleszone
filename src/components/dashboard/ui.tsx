@@ -3,7 +3,7 @@
 import { T } from "@/lib/constants";
 import type { CSSProperties, ReactNode } from "react";
 
-export function Pill({ label, value, color }: { label: string; value: number | string; color?: string }) {
+export function Pill({ label, value, color, bg }: { label: string; value: number | string; color?: string; bg?: string }) {
   return (
     <div
       style={{
@@ -21,8 +21,9 @@ export function Pill({ label, value, color }: { label: string; value: number | s
         style={{
           fontSize: "14px",
           fontWeight: 700,
-          color: color || "#080E32",
+          color: bg ? "#FFF" : color || "#080E32",
           fontVariantNumeric: "tabular-nums",
+          ...(bg ? { backgroundColor: bg, padding: "2px 8px", borderRadius: "6px" } : {}),
         }}
       >
         {typeof value === "number" ? value.toLocaleString("pt-BR") : value}
