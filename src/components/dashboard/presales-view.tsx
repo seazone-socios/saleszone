@@ -98,7 +98,7 @@ export function PresalesView({ data, loading }: Props) {
           <thead>
             <tr style={{ backgroundColor: "#f8f8fa" }}>
               <th style={{ ...thStyle, textAlign: "left", minWidth: 180 }}>Pré-Vendedor</th>
-              <th style={{ ...thStyle, textAlign: "center", minWidth: 80 }}>Mediana</th>
+              <th style={{ ...thStyle, textAlign: "center", minWidth: 80 }}>Tempo de Resposta</th>
               <th style={{ ...thStyle, textAlign: "center", minWidth: 60 }}>≤30min</th>
               <th style={{ ...thStyle, textAlign: "center", minWidth: 50 }}>Total</th>
               <th style={{ ...thStyle, textAlign: "center", minWidth: 70 }}>Com Ligação</th>
