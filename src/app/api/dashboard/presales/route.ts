@@ -143,7 +143,7 @@ export async function GET() {
         .from("nekt_pipedrive_activities")
         .select("deal_id, add_time")
         .in("deal_id", dealIds)
-        .or("subject.ilike.%MIA%,subject.ilike.%Nutrição%,subject.ilike.%nutrição%,subject.ilike.%Tempo do Lead%")
+        .or("subject.ilike.*MIA*,subject.ilike.*Nutrição*,subject.ilike.*nutrição*,subject.ilike.*Tempo do Lead*")
         .order("add_time", { ascending: false }),
     ]);
     const addTimeMap = new Map((dealsExtra || []).map((d) => [d.id, d.add_time]));
