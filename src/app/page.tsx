@@ -58,15 +58,28 @@ export default function Dashboard() {
     <div style={{ fontFamily: T.font, backgroundColor: T.cinza50, minHeight: "100vh", letterSpacing: "0.02em" }}>
       <Header mainView={mainView} setMainView={setMainView} onRefresh={handleRefresh} loading={loading} />
       <div style={{ padding: "16px 20px", maxWidth: "2200px", margin: "0 auto" }}>
-        {mainView === "acompanhamento" ? (
+        {mainView === "acompanhamento" && (
           <AcompanhamentoView
             data={acompData[activeTab] || null}
             activeTab={activeTab}
             setActiveTab={(tab: TabKey) => setActiveTab(tab)}
             loading={loading}
           />
-        ) : (
-          <AlinhamentoView data={alinhData} loading={loading} />
+        )}
+        {mainView === "alinhamento" && <AlinhamentoView data={alinhData} loading={loading} />}
+        {mainView === "ociosidade" && (
+          <div style={{ textAlign: "center", padding: "80px 20px", color: T.cinza600 }}>
+            <div style={{ fontSize: "40px", marginBottom: "16px" }}>⏳</div>
+            <h3 style={{ fontSize: "18px", fontWeight: 600, color: T.fg, margin: "0 0 8px" }}>Ociosidade</h3>
+            <p style={{ fontSize: "14px", margin: 0 }}>Em breve — análise de ociosidade dos closers via Google Calendar</p>
+          </div>
+        )}
+        {mainView === "campanhas" && (
+          <div style={{ textAlign: "center", padding: "80px 20px", color: T.cinza600 }}>
+            <div style={{ fontSize: "40px", marginBottom: "16px" }}>📢</div>
+            <h3 style={{ fontSize: "18px", fontWeight: 600, color: T.fg, margin: "0 0 8px" }}>Campanhas</h3>
+            <p style={{ fontSize: "14px", margin: 0 }}>Em breve — acompanhamento de campanhas de marketing</p>
+          </div>
         )}
       </div>
     </div>
