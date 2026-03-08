@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       if (!latest || latest.length === 0) {
         return NextResponse.json({
           snapshotDate: new Date().toISOString().split("T")[0],
-          summary: { totalAds: 0, totalSpend: 0, totalLeads: 0, avgCpl: 0, criticos: 0, alertas: 0 },
+          summary: { totalAds: 0, totalSpend: 0, totalLeads: 0, avgCpl: 0, criticos: 0, alertas: 0, totalMql: 0, totalSql: 0, totalOpp: 0, totalWon: 0, cpw: 0 },
           squads: [],
           top10: [],
         } satisfies CampanhasData);
@@ -29,15 +29,36 @@ export async function GET(req: NextRequest) {
       snapshotDate = latest[0].snapshot_date;
     }
 
-    const { data: rows, error } = await supabase
-      .from("squad_meta_ads")
-      .select("*")
-      .eq("snapshot_date", snapshotDate)
-      .order("spend", { ascending: false });
+    // Determinar startDate do mês para daily_counts
+    const monthPrefix = snapshotDate!.substring(0, 7); // YYYY-MM
+    const startDate = `${monthPrefix}-01`;
 
-    if (error) throw new Error(`Supabase error: ${error.message}`);
+    // Queries paralelas: Meta Ads + Pipedrive daily_counts
+    const [metaRes, countsRes] = await Promise.all([
+      supabase
+        .from("squad_meta_ads")
+        .select("*")
+        .eq("snapshot_date", snapshotDate)
+        .order("spend", { ascending: false }),
+      supabase
+        .from("squad_daily_counts")
+        .select("tab, empreendimento, count")
+        .gte("date", startDate),
+    ]);
 
-    const ads = rows || [];
+    if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
+    if (countsRes.error) throw new Error(`Daily counts error: ${countsRes.error.message}`);
+
+    const ads = metaRes.data || [];
+
+    // Agregar Pipedrive counts por empreendimento
+    const countsMap = new Map<string, Record<string, number>>();
+    for (const row of countsRes.data || []) {
+      const key = row.empreendimento;
+      if (!countsMap.has(key)) countsMap.set(key, { mql: 0, sql: 0, opp: 0, won: 0 });
+      const cur = countsMap.get(key)!;
+      cur[row.tab] = (cur[row.tab] || 0) + (row.count || 0);
+    }
 
     // Summary
     const totalAds = ads.length;
@@ -61,6 +82,7 @@ export async function GET(req: NextRequest) {
         const empAds = empMap.get(emp) || [];
         const spend = empAds.reduce((s, r) => s + Number(r.spend), 0);
         const leads = empAds.reduce((s, r) => s + (r.leads || 0), 0);
+        const counts = countsMap.get(emp) || { mql: 0, sql: 0, opp: 0, won: 0 };
         return {
           emp,
           ads: empAds.length,
@@ -69,11 +91,20 @@ export async function GET(req: NextRequest) {
           cpl: leads > 0 ? Math.round((spend / leads) * 100) / 100 : 0,
           criticos: empAds.filter((r) => r.severidade === "CRITICO").length,
           alertas: empAds.filter((r) => r.severidade === "ALERTA").length,
+          mql: counts.mql,
+          sql: counts.sql,
+          opp: counts.opp,
+          won: counts.won,
+          cpw: counts.won > 0 ? Math.round((spend / counts.won) * 100) / 100 : 0,
         };
       });
 
       const sqSpend = sqAds.reduce((s, r) => s + Number(r.spend), 0);
       const sqLeads = sqAds.reduce((s, r) => s + (r.leads || 0), 0);
+      const sqMql = empreendimentos.reduce((s, e) => s + e.mql, 0);
+      const sqSql = empreendimentos.reduce((s, e) => s + e.sql, 0);
+      const sqOpp = empreendimentos.reduce((s, e) => s + e.opp, 0);
+      const sqWon = empreendimentos.reduce((s, e) => s + e.won, 0);
 
       return {
         id: sq.id,
@@ -84,6 +115,11 @@ export async function GET(req: NextRequest) {
         avgCpl: sqLeads > 0 ? Math.round((sqSpend / sqLeads) * 100) / 100 : 0,
         criticos: sqAds.filter((r) => r.severidade === "CRITICO").length,
         alertas: sqAds.filter((r) => r.severidade === "ALERTA").length,
+        totalMql: sqMql,
+        totalSql: sqSql,
+        totalOpp: sqOpp,
+        totalWon: sqWon,
+        cpw: sqWon > 0 ? Math.round((sqSpend / sqWon) * 100) / 100 : 0,
       };
     });
 
@@ -118,6 +154,9 @@ export async function GET(req: NextRequest) {
       diagnostico: r.diagnostico || null,
     }));
 
+    const grandMql = squads.reduce((s, sq) => s + sq.totalMql, 0);
+    const grandWon = squads.reduce((s, sq) => s + sq.totalWon, 0);
+
     const result: CampanhasData = {
       snapshotDate: snapshotDate!,
       summary: {
@@ -127,6 +166,11 @@ export async function GET(req: NextRequest) {
         avgCpl: Math.round(avgCpl * 100) / 100,
         criticos,
         alertas,
+        totalMql: grandMql,
+        totalSql: squads.reduce((s, sq) => s + sq.totalSql, 0),
+        totalOpp: squads.reduce((s, sq) => s + sq.totalOpp, 0),
+        totalWon: grandWon,
+        cpw: grandWon > 0 ? Math.round((totalSpend / grandWon) * 100) / 100 : 0,
       },
       squads,
       top10,

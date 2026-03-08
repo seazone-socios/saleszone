@@ -36,11 +36,12 @@ export function CampanhasView({ data, loading }: Props) {
     <>
       {/* Summary cards — mês atual */}
       <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap", alignItems: "center" }}>
-        <BrlPill label="Gasto no Mês" value={summary.totalSpend} />
-        <StatPill label="Leads no Mês" value={summary.totalLeads} color={T.verde600} />
-        <BrlPill label="CPL Médio" value={summary.avgCpl} />
-        <StatPill label="Críticos" value={summary.criticos} color={T.destructive} />
-        <StatPill label="Alertas" value={summary.alertas} color={T.laranja500} />
+        <BrlPill label="Investimento" value={summary.totalSpend} />
+        <StatPill label="Leads" value={summary.totalLeads} color={T.verde600} />
+        <BrlPill label="CPL" value={summary.avgCpl} />
+        <StatPill label="MQL" value={summary.totalMql} />
+        <StatPill label="WON" value={summary.totalWon} color={T.verde600} />
+        <BrlPill label="CPW" value={summary.cpw} />
         <span style={{ fontSize: "11px", color: T.cinza400, marginLeft: "auto" }}>
           {monthLabel(snapshotDate)} · {summary.totalAds} ads · atualizado {new Date(snapshotDate + "T12:00:00").toLocaleDateString("pt-BR")}
         </span>
@@ -49,7 +50,7 @@ export function CampanhasView({ data, loading }: Props) {
       {/* Per squad */}
       {squads.map((sq) => {
         const clr = SQUAD_COLORS[sq.id] || T.azul600;
-        const hasData = sq.empreendimentos.some((e) => e.ads > 0);
+        const hasData = sq.empreendimentos.some((e) => e.ads > 0 || e.mql > 0 || e.sql > 0 || e.opp > 0 || e.won > 0);
 
         return (
           <div
@@ -82,36 +83,11 @@ export function CampanhasView({ data, loading }: Props) {
                   Leads: {sq.totalLeads}
                 </span>
                 <span style={{ color: "rgba(255,255,255,0.8)", fontSize: "12px" }}>
-                  CPL: {formatBRL(sq.avgCpl)}
+                  WON: {sq.totalWon}
                 </span>
-                {sq.criticos > 0 && (
-                  <span
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.2)",
-                      color: "#FFF",
-                      padding: "2px 8px",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {sq.criticos} crít
-                  </span>
-                )}
-                {sq.alertas > 0 && (
-                  <span
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.15)",
-                      color: "#FFF",
-                      padding: "2px 8px",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {sq.alertas} alerta
-                  </span>
-                )}
+                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: "12px" }}>
+                  CPW: {sq.cpw > 0 ? formatBRL(sq.cpw) : "-"}
+                </span>
               </div>
             </div>
 
@@ -119,13 +95,15 @@ export function CampanhasView({ data, loading }: Props) {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ backgroundColor: T.cinza50 }}>
-                    <th style={{ ...thStyle, textAlign: "left", minWidth: 200 }}>Empreendimento</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Ads</th>
+                    <th style={{ ...thStyle, textAlign: "left", minWidth: 180 }}>Empreendimento</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Gasto</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Leads</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>CPL</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Críticos</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Alertas</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>MQL</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>SQL</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>OPP</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>WON</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>CPW</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -136,33 +114,34 @@ export function CampanhasView({ data, loading }: Props) {
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
                     >
                       <td style={{ ...tdStyle, color: T.cinza800 }}>{emp.emp}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{emp.ads}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{formatBRL(emp.spend)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>{emp.spend > 0 ? formatBRL(emp.spend) : "-"}</td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: emp.leads > 0 ? 600 : 400 }}>
-                        {emp.leads}
+                        {emp.leads > 0 ? emp.leads : "-"}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
                         {emp.cpl > 0 ? formatBRL(emp.cpl) : "-"}
                       </td>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          textAlign: "right",
-                          color: emp.criticos > 0 ? T.destructive : T.cinza300,
-                          fontWeight: emp.criticos > 0 ? 700 : 400,
-                        }}
-                      >
-                        {emp.criticos}
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: emp.mql > 0 ? 600 : 400 }}>
+                        {emp.mql > 0 ? emp.mql : "-"}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {emp.sql > 0 ? emp.sql : "-"}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {emp.opp > 0 ? emp.opp : "-"}
                       </td>
                       <td
                         style={{
                           ...tdStyle,
                           textAlign: "right",
-                          color: emp.alertas > 0 ? T.laranja500 : T.cinza300,
-                          fontWeight: emp.alertas > 0 ? 600 : 400,
+                          fontWeight: emp.won > 0 ? 700 : 400,
+                          color: emp.won > 0 ? T.verde700 : T.cinza300,
                         }}
                       >
-                        {emp.alertas}
+                        {emp.won > 0 ? emp.won : "-"}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: emp.cpw > 0 ? 600 : 400 }}>
+                        {emp.cpw > 0 ? formatBRL(emp.cpw) : "-"}
                       </td>
                     </tr>
                   ))}
