@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer } from "lucide-react";
+import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer, ShoppingCart } from "lucide-react";
 import { T } from "@/lib/constants";
 import { pillBtnStyle, pillBtnPrimaryStyle, viewBtnStyle } from "./ui";
 
@@ -51,14 +51,14 @@ export function Header({ mainView, setMainView, onRefresh, loading }: HeaderProp
         }}
       >
         <button
-          onClick={() => setMainView("acompanhamento")}
+          onClick={() => setMainView("campanhas")}
           style={{
             ...viewBtnStyle,
-            backgroundColor: mainView === "acompanhamento" ? T.fg : "transparent",
-            color: mainView === "acompanhamento" ? "#FFF" : T.cinza600,
+            backgroundColor: mainView === "campanhas" ? T.fg : "transparent",
+            color: mainView === "campanhas" ? "#FFF" : T.cinza600,
           }}
         >
-          <BarChart3 size={12} /> Acompanhamento
+          <Megaphone size={12} /> Campanhas
         </button>
         <button
           onClick={() => setMainView("alinhamento")}
@@ -69,6 +69,26 @@ export function Header({ mainView, setMainView, onRefresh, loading }: HeaderProp
           }}
         >
           <Users size={12} /> Alinhamento Squad
+        </button>
+        <button
+          onClick={() => setMainView("acompanhamento")}
+          style={{
+            ...viewBtnStyle,
+            backgroundColor: mainView === "acompanhamento" ? T.fg : "transparent",
+            color: mainView === "acompanhamento" ? "#FFF" : T.cinza600,
+          }}
+        >
+          <BarChart3 size={12} /> Acompanhamento
+        </button>
+        <button
+          onClick={() => setMainView("presales")}
+          style={{
+            ...viewBtnStyle,
+            backgroundColor: mainView === "presales" ? T.fg : "transparent",
+            color: mainView === "presales" ? "#FFF" : T.cinza600,
+          }}
+        >
+          <Timer size={12} /> Pré-Venda
         </button>
         <button
           onClick={() => setMainView("ociosidade")}
@@ -91,24 +111,14 @@ export function Header({ mainView, setMainView, onRefresh, loading }: HeaderProp
           <Scale size={12} /> Balanceamento
         </button>
         <button
-          onClick={() => setMainView("presales")}
+          onClick={() => setMainView("venda")}
           style={{
             ...viewBtnStyle,
-            backgroundColor: mainView === "presales" ? T.fg : "transparent",
-            color: mainView === "presales" ? "#FFF" : T.cinza600,
+            backgroundColor: mainView === "venda" ? T.fg : "transparent",
+            color: mainView === "venda" ? "#FFF" : T.cinza600,
           }}
         >
-          <Timer size={12} /> Pré-Venda
-        </button>
-        <button
-          onClick={() => setMainView("campanhas")}
-          style={{
-            ...viewBtnStyle,
-            backgroundColor: mainView === "campanhas" ? T.fg : "transparent",
-            color: mainView === "campanhas" ? "#FFF" : T.cinza600,
-          }}
-        >
-          <Megaphone size={12} /> Campanhas
+          <ShoppingCart size={12} /> Venda
         </button>
       </div>
       <button style={pillBtnStyle()}>

@@ -12,7 +12,7 @@ import { OciosidadeView } from "@/components/dashboard/ociosidade-view";
 import { PresalesView } from "@/components/dashboard/presales-view";
 
 export default function Dashboard() {
-  const [mainView, setMainView] = useState("acompanhamento");
+  const [mainView, setMainView] = useState("campanhas");
   const [activeTab, setActiveTab] = useState<TabKey>("mql");
   const [loading, setLoading] = useState(false);
   const [acompData, setAcompData] = useState<Record<string, AcompanhamentoData>>({});
@@ -144,6 +144,11 @@ export default function Dashboard() {
         {mainView === "balanceamento" && <BalanceamentoView data={balancData} ocioData={ocioData} loading={loading} />}
         {mainView === "campanhas" && <CampanhasView data={campData} loading={loading} />}
         {mainView === "presales" && <PresalesView data={presalesData} loading={loading} />}
+        {mainView === "venda" && (
+          <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
+            <p style={{ fontSize: "16px" }}>Aba Venda — em construção</p>
+          </div>
+        )}
       </div>
     </div>
   );
