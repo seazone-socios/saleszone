@@ -75,27 +75,31 @@ export async function GET() {
     const windowEnd = new Date(today);
     windowEnd.setDate(windowEnd.getDate() + 20); // ~14 business days
 
-    // 3. Query events (also grab closer_name for display)
+    // 3. Query ALL events (cancelled + non-cancelled) for no-show calculation
     const { data: events, error: evtErr } = await supabase
       .from("squad_calendar_events")
       .select("closer_email, closer_name, dia, duracao_min, cancelou")
       .in("closer_email", emails)
-      .eq("cancelou", false)
       .gte("dia", formatDate(windowStart))
       .lte("dia", formatDate(windowEnd));
 
     if (evtErr) throw evtErr;
 
-    // 4. Build aggregation: email → date → { totalMin, count }
-    const agg = new Map<string, Map<string, { totalMin: number; count: number }>>();
+    // 4. Build aggregation: email → date → { totalMin, count (non-cancelled), cancelledCount, totalScheduled }
+    const agg = new Map<string, Map<string, { totalMin: number; count: number; cancelledCount: number; totalScheduled: number }>>();
     for (const e of emails) agg.set(e, new Map());
 
     for (const evt of events || []) {
       const emailMap = agg.get(evt.closer_email);
       if (!emailMap) continue;
-      const existing = emailMap.get(evt.dia) || { totalMin: 0, count: 0 };
-      existing.totalMin += evt.duracao_min || 0;
-      existing.count += 1;
+      const existing = emailMap.get(evt.dia) || { totalMin: 0, count: 0, cancelledCount: 0, totalScheduled: 0 };
+      existing.totalScheduled += 1;
+      if (evt.cancelou) {
+        existing.cancelledCount += 1;
+      } else {
+        existing.totalMin += evt.duracao_min || 0;
+        existing.count += 1;
+      }
       emailMap.set(evt.dia, existing);
     }
 
@@ -156,27 +160,38 @@ export async function GET() {
 
       // Days for display
       const days: OciosidadeDay[] = displayDays.map((ds) => {
-        const info = emailMap.get(ds) || { totalMin: 0, count: 0 };
+        const info = emailMap.get(ds) || { totalMin: 0, count: 0, cancelledCount: 0, totalScheduled: 0 };
         return {
           date: ds,
           occupancyPct: Math.round((info.totalMin / JORNADA_MIN) * 100),
           eventCount: info.count,
           totalMinutes: info.totalMin,
+          cancelledCount: info.cancelledCount,
+          totalScheduled: info.totalScheduled,
+          noShowPct: info.totalScheduled > 0 ? Math.round((info.cancelledCount / info.totalScheduled) * 100) : -1,
         };
       });
 
-      // Past 7 business days avg
+      // Past 7 business days avg (occupancy)
       const past7Days = pastDays.slice(-7);
+      const defaultInfo = { totalMin: 0, count: 0, cancelledCount: 0, totalScheduled: 0 };
       const past7Vals = past7Days.map((ds) => {
-        const info = emailMap.get(ds) || { totalMin: 0, count: 0 };
+        const info = emailMap.get(ds) || defaultInfo;
         return (info.totalMin / JORNADA_MIN) * 100;
       });
       const avgPast7 = past7Vals.length > 0 ? Math.round(past7Vals.reduce((a, b) => a + b, 0) / past7Vals.length) : 0;
 
+      // Past 7 business days avg (no-show)
+      const past7NoShow = past7Days.map((ds) => {
+        const info = emailMap.get(ds) || defaultInfo;
+        return info.totalScheduled > 0 ? (info.cancelledCount / info.totalScheduled) * 100 : -1;
+      }).filter((v) => v >= 0);
+      const avgNoShow7 = past7NoShow.length > 0 ? Math.round(past7NoShow.reduce((a, b) => a + b, 0) / past7NoShow.length) : 0;
+
       // Next 7 business days avg
       const next7Days = futureDays.slice(0, 7);
       const next7Vals = next7Days.map((ds) => {
-        const info = emailMap.get(ds) || { totalMin: 0, count: 0 };
+        const info = emailMap.get(ds) || defaultInfo;
         return (info.totalMin / JORNADA_MIN) * 100;
       });
       const avgNext7 = next7Vals.length > 0 ? Math.round(next7Vals.reduce((a, b) => a + b, 0) / next7Vals.length) : 0;
@@ -185,7 +200,7 @@ export async function GET() {
       const allVals = allBizDays
         .filter((ds) => ds <= todayStr)
         .map((ds) => {
-          const info = emailMap.get(ds) || { totalMin: 0, count: 0 };
+          const info = emailMap.get(ds) || defaultInfo;
           return (info.totalMin / JORNADA_MIN) * 100;
         });
       const avgHistorical = allVals.length > 0 ? Math.round(allVals.reduce((a, b) => a + b, 0) / allVals.length) : 0;
@@ -194,7 +209,7 @@ export async function GET() {
       const weekMap = new Map<string, number[]>();
       for (const ds of allBizDays.filter((d) => d <= todayStr)) {
         const wk = isoWeekLabel(ds);
-        const info = emailMap.get(ds) || { totalMin: 0, count: 0 };
+        const info = emailMap.get(ds) || defaultInfo;
         if (!weekMap.has(wk)) weekMap.set(wk, []);
         weekMap.get(wk)!.push((info.totalMin / JORNADA_MIN) * 100);
       }
@@ -209,7 +224,7 @@ export async function GET() {
       }
       if (minWeek.weekLabel === "-") minWeek = { weekLabel: "-", avg: 0 };
 
-      return { email, name, squadId, days, avgPast7, avgNext7, avgHistorical, maxWeek, minWeek };
+      return { email, name, squadId, days, avgPast7, avgNext7, avgHistorical, avgNoShow7, maxWeek, minWeek };
     });
 
     // Sort by squad, then name

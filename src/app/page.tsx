@@ -2,13 +2,14 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { T } from "@/lib/constants";
-import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData } from "@/lib/types";
+import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData } from "@/lib/types";
 import { Header } from "@/components/dashboard/header";
 import { AcompanhamentoView } from "@/components/dashboard/acompanhamento-view";
 import { AlinhamentoView } from "@/components/dashboard/alinhamento-view";
 import { BalanceamentoView } from "@/components/dashboard/balanceamento-view";
 import { CampanhasView } from "@/components/dashboard/campanhas-view";
 import { OciosidadeView } from "@/components/dashboard/ociosidade-view";
+import { PresalesView } from "@/components/dashboard/presales-view";
 
 export default function Dashboard() {
   const [mainView, setMainView] = useState("acompanhamento");
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [campData, setCampData] = useState<CampanhasData | null>(null);
   const [balancData, setBalancData] = useState<RegrasMqlData | null>(null);
   const [ocioData, setOcioData] = useState<OciosidadeData | null>(null);
+  const [presalesData, setPresalesData] = useState<PresalesData | null>(null);
 
   const fetchAcomp = useCallback(async (tab: TabKey) => {
     setLoading(true);
@@ -86,6 +88,19 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchPresales = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/presales");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPresalesData(await res.json());
+    } catch (err) {
+      console.error("Fetch presales error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (mainView === "acompanhamento" && !acompData[activeTab]) {
       fetchAcomp(activeTab);
@@ -97,6 +112,8 @@ export default function Dashboard() {
       fetchBalanc();
     } else if (mainView === "campanhas" && !campData) {
       fetchCamp();
+    } else if (mainView === "presales" && !presalesData) {
+      fetchPresales();
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -106,6 +123,7 @@ export default function Dashboard() {
     else if (mainView === "ociosidade") fetchOcio();
     else if (mainView === "balanceamento") fetchBalanc();
     else if (mainView === "campanhas") fetchCamp();
+    else if (mainView === "presales") fetchPresales();
   };
 
   return (
@@ -124,6 +142,7 @@ export default function Dashboard() {
         {mainView === "ociosidade" && <OciosidadeView data={ocioData} loading={loading} />}
         {mainView === "balanceamento" && <BalanceamentoView data={balancData} loading={loading} />}
         {mainView === "campanhas" && <CampanhasView data={campData} loading={loading} />}
+        {mainView === "presales" && <PresalesView data={presalesData} loading={loading} />}
       </div>
     </div>
   );

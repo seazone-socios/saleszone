@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone } from "lucide-react";
+import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer } from "lucide-react";
 import { T } from "@/lib/constants";
 import { pillBtnStyle, pillBtnPrimaryStyle, viewBtnStyle } from "./ui";
 
@@ -89,6 +89,16 @@ export function Header({ mainView, setMainView, onRefresh, loading }: HeaderProp
           }}
         >
           <Scale size={12} /> Balanceamento
+        </button>
+        <button
+          onClick={() => setMainView("presales")}
+          style={{
+            ...viewBtnStyle,
+            backgroundColor: mainView === "presales" ? T.fg : "transparent",
+            color: mainView === "presales" ? "#FFF" : T.cinza600,
+          }}
+        >
+          <Timer size={12} /> Pré-Venda
         </button>
         <button
           onClick={() => setMainView("campanhas")}

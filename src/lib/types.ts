@@ -128,6 +128,9 @@ export interface OciosidadeDay {
   occupancyPct: number;
   eventCount: number;
   totalMinutes: number;
+  cancelledCount: number;
+  totalScheduled: number;
+  noShowPct: number;
 }
 
 export interface OciosidadeCloser {
@@ -138,6 +141,7 @@ export interface OciosidadeCloser {
   avgPast7: number;
   avgNext7: number;
   avgHistorical: number;
+  avgNoShow7: number;
   maxWeek: { weekLabel: string; avg: number };
   minWeek: { weekLabel: string; avg: number };
 }
@@ -186,4 +190,38 @@ export interface RegrasMqlSquad {
 
 export interface RegrasMqlData {
   squads: RegrasMqlSquad[];
+}
+
+// Pré-Venda — Tempo de resposta dos pré-vendedores
+export interface PresalesDealRow {
+  deal_id: number;
+  deal_title: string;
+  preseller_name: string;
+  transbordo_at: string;
+  first_action_at: string | null;
+  response_time_minutes: number | null;
+  action_type: string | null;
+}
+
+export interface PresellerSummary {
+  name: string;
+  squadId: number | null;
+  totalDeals: number;
+  dealsComAcao: number;
+  dealsPendentes: number;
+  avgMinutes: number;
+  medianMinutes: number;
+  pctSub30: number;
+  pctSub60: number;
+}
+
+export interface PresalesData {
+  presellers: PresellerSummary[];
+  recentDeals: PresalesDealRow[];
+  totals: {
+    totalDeals: number;
+    dealsComAcao: number;
+    avgMinutes: number;
+    medianMinutes: number;
+  };
 }

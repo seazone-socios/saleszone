@@ -34,6 +34,20 @@ function occFg(pct: number): string {
   return "#FFF";
 }
 
+// No-show color scale (inverse: higher = worse)
+function noShowColor(pct: number): string {
+  if (pct < 0) return "#E5E7EB"; // sem eventos
+  if (pct < 10) return "#22C55E"; // excelente
+  if (pct < 20) return "#F59E0B"; // atenção
+  if (pct < 35) return "#F97316"; // preocupante
+  return "#EF4444"; // crítico
+}
+
+function noShowFg(pct: number): string {
+  if (pct < 0) return "#9CA3AF";
+  return "#FFF";
+}
+
 function trendArrow(past: number, next: number): { symbol: string; color: string } {
   const diff = next - past;
   if (Math.abs(diff) < 5) return { symbol: "\u2192", color: T.cinza600 }; // →
@@ -130,6 +144,9 @@ export function OciosidadeView({ data, loading }: Props) {
                 </div>
                 <div style={{ fontSize: "10px", color: T.cinza600, marginTop: "4px" }}>
                   {occLabel(c.avgPast7)} · Próx 7d: {c.avgNext7}%
+                </div>
+                <div style={{ fontSize: "10px", color: noShowColor(c.avgNoShow7), marginTop: "2px", fontWeight: 500 }}>
+                  No-show 7d: {c.avgNoShow7}%
                 </div>
               </div>
             </div>
@@ -270,6 +287,145 @@ export function OciosidadeView({ data, loading }: Props) {
             { label: "66-79% Acima", color: "#F59E0B" },
             { label: "80%+ Sobrecarregado", color: "#EF4444" },
             { label: "Sem dados", color: "#E5E7EB" },
+          ].map((f) => (
+            <div key={f.label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <div style={{ width: "12px", height: "12px", borderRadius: "3px", backgroundColor: f.color }} />
+              <span style={{ fontSize: "10px", color: T.cinza600 }}>{f.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Section 2b: No-Show Heatmap */}
+      <div
+        style={{
+          backgroundColor: T.card,
+          borderRadius: "12px",
+          border: `1px solid ${T.border}`,
+          boxShadow: T.elevSm,
+          marginBottom: "20px",
+          overflow: "auto",
+        }}
+      >
+        <div style={{ padding: "12px 16px 8px", borderBottom: `1px solid ${T.border}` }}>
+          <span style={{ fontSize: "14px", fontWeight: 600, color: T.fg }}>Taxa de No-Show</span>
+          <span style={{ fontSize: "11px", color: T.cinza600, marginLeft: "12px" }}>
+            % reunioes canceladas pelo closer
+          </span>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ ...hdrStyle, minWidth: 120, textAlign: "left", position: "sticky", left: 0, backgroundColor: T.cinza50, zIndex: 2 }}>
+                Closer
+              </th>
+              {dates.map((d) => (
+                <th
+                  key={d.date}
+                  style={{
+                    ...hdrStyle,
+                    textAlign: "center",
+                    minWidth: 52,
+                    backgroundColor: d.isToday ? T.azul50 : T.cinza50,
+                    borderLeft: d.isToday ? `2px solid ${T.azul600}` : undefined,
+                    borderRight: d.isToday ? `2px solid ${T.azul600}` : undefined,
+                    borderTop: d.isToday ? `2px solid ${T.azul600}` : undefined,
+                  }}
+                >
+                  {d.isToday && (
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: T.azul600, letterSpacing: "0.08em", marginBottom: "2px" }}>
+                      HOJE
+                    </div>
+                  )}
+                  <div style={{ fontSize: "10px", fontWeight: d.isToday ? 600 : 500, color: d.isToday ? T.azul600 : undefined }}>{d.weekday}</div>
+                  <div style={{ fontSize: "10px", fontWeight: 400, color: d.isToday ? T.azul600 : T.cinza400 }}>{d.label}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {squadIds.map((sqId, sqIdx) => {
+              const sqClosers = squads.get(sqId)!;
+              const sqColor = SQUAD_COLORS[sqId] || T.azul600;
+
+              return sqClosers.map((c, cIdx) => (
+                <tr key={c.email}>
+                  <td
+                    style={{
+                      padding: "6px 10px",
+                      borderBottom: `1px solid ${T.border}`,
+                      borderTop: cIdx === 0 && sqIdx > 0 ? `2px solid ${sqColor}` : undefined,
+                      position: "sticky",
+                      left: 0,
+                      backgroundColor: T.card,
+                      zIndex: 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <div
+                        style={{
+                          width: "6px",
+                          height: "6px",
+                          borderRadius: "50%",
+                          backgroundColor: sqColor,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontSize: "12px", fontWeight: 500, color: T.fg }}>{firstName(c.name)}</span>
+                    </div>
+                  </td>
+                  {c.days.map((day) => {
+                    const dateInfo = dates.find((d) => d.date === day.date);
+                    const bg = noShowColor(day.noShowPct);
+                    const fg = noShowFg(day.noShowPct);
+
+                    return (
+                      <td
+                        key={day.date}
+                        title={`${c.name} · ${day.date}\n${day.cancelledCount} cancelados de ${day.totalScheduled} agendados\n${day.noShowPct >= 0 ? day.noShowPct + "%" : "Sem eventos"} no-show`}
+                        style={{
+                          padding: "4px 2px",
+                          borderBottom: `1px solid ${T.border}`,
+                          borderTop: cIdx === 0 && sqIdx > 0 ? `2px solid ${sqColor}` : undefined,
+                          textAlign: "center",
+                          borderLeft: dateInfo?.isToday ? `2px solid ${T.azul600}` : undefined,
+                          borderRight: dateInfo?.isToday ? `2px solid ${T.azul600}` : undefined,
+                        }}
+                      >
+                        <div
+                          style={{
+                            backgroundColor: bg,
+                            color: fg,
+                            borderRadius: "6px",
+                            padding: "6px 4px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            fontVariantNumeric: "tabular-nums",
+                            margin: "0 2px",
+                            opacity: dateInfo?.isPast ? 0.85 : 1,
+                          }}
+                        >
+                          {day.noShowPct >= 0 ? `${day.noShowPct}%` : "-"}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+
+        {/* Legend */}
+        <div style={{ padding: "10px 16px", borderTop: `1px solid ${T.border}`, display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: "10px", color: T.cinza600, fontWeight: 500 }}>Faixas:</span>
+          {[
+            { label: "0-9% Excelente", color: "#22C55E" },
+            { label: "10-19% Atencao", color: "#F59E0B" },
+            { label: "20-34% Preocupante", color: "#F97316" },
+            { label: "35%+ Critico", color: "#EF4444" },
+            { label: "Sem eventos", color: "#E5E7EB" },
           ].map((f) => (
             <div key={f.label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
               <div style={{ width: "12px", height: "12px", borderRadius: "3px", backgroundColor: f.color }} />
