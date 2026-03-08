@@ -34,52 +34,15 @@ export function CampanhasView({ data, loading }: Props) {
 
   return (
     <>
-      {/* Summary cards */}
+      {/* Summary cards — mês atual */}
       <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap", alignItems: "center" }}>
-        <StatPill label="Gasto Total" value={0} />
-        <div
-          style={{
-            backgroundColor: "#FFF",
-            border: "1px solid #E6E7EA",
-            borderRadius: "12px",
-            padding: "10px 18px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-          }}
-        >
-          <span style={{ fontSize: "10px", fontWeight: 500, color: "#6B6E84", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-            Gasto Total
-          </span>
-          <span style={{ fontSize: "20px", fontWeight: 700, color: T.fg, fontVariantNumeric: "tabular-nums" }}>
-            {formatBRL(summary.totalSpend)}
-          </span>
-        </div>
-        <StatPill label="Total Leads" value={summary.totalLeads} color={T.verde600} />
-        <div
-          style={{
-            backgroundColor: "#FFF",
-            border: "1px solid #E6E7EA",
-            borderRadius: "12px",
-            padding: "10px 18px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-          }}
-        >
-          <span style={{ fontSize: "10px", fontWeight: 500, color: "#6B6E84", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-            CPL Médio
-          </span>
-          <span style={{ fontSize: "20px", fontWeight: 700, color: T.fg, fontVariantNumeric: "tabular-nums" }}>
-            {formatBRL(summary.avgCpl)}
-          </span>
-        </div>
+        <BrlPill label="Gasto no Mês" value={summary.totalSpend} />
+        <StatPill label="Leads no Mês" value={summary.totalLeads} color={T.verde600} />
+        <BrlPill label="CPL Médio" value={summary.avgCpl} />
         <StatPill label="Críticos" value={summary.criticos} color={T.destructive} />
         <StatPill label="Alertas" value={summary.alertas} color={T.laranja500} />
         <span style={{ fontSize: "11px", color: T.cinza400, marginLeft: "auto" }}>
-          Snapshot: {new Date(snapshotDate + "T12:00:00").toLocaleDateString("pt-BR")} · {summary.totalAds} ads
+          {monthLabel(snapshotDate)} · {summary.totalAds} ads · atualizado {new Date(snapshotDate + "T12:00:00").toLocaleDateString("pt-BR")}
         </span>
       </div>
 
@@ -278,10 +241,41 @@ export function CampanhasView({ data, loading }: Props) {
 
       <div style={{ marginTop: "10px", textAlign: "right" }}>
         <span style={{ fontSize: "11px", color: T.cinza400 }}>
-          Meta Ads · Conta SZI · Snapshot {new Date(snapshotDate + "T12:00:00").toLocaleDateString("pt-BR")}
+          Meta Ads · Conta SZI · {monthLabel(snapshotDate)}
         </span>
       </div>
     </>
+  );
+}
+
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function monthLabel(dateStr: string): string {
+  const [y, m] = dateStr.split("-");
+  return `${MESES[Number(m) - 1]} ${y}`;
+}
+
+function BrlPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div
+      style={{
+        backgroundColor: "#FFF",
+        border: "1px solid #E6E7EA",
+        borderRadius: "12px",
+        padding: "10px 18px",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+      }}
+    >
+      <span style={{ fontSize: "10px", fontWeight: 500, color: "#6B6E84", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+        {label}
+      </span>
+      <span style={{ fontSize: "20px", fontWeight: 700, color: T.fg, fontVariantNumeric: "tabular-nums" }}>
+        {formatBRL(value)}
+      </span>
+    </div>
   );
 }
 
