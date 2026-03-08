@@ -83,11 +83,67 @@ export function PresalesView({ data, loading }: Props) {
         <CalcDisclaimer />
       </div>
 
-      {/* Cards PVs — coluna vertical */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-        {mainPVs.map((ps) => (
-          <BigPVCard key={ps.name} ps={ps} />
-        ))}
+      {/* Tabela PVs */}
+      <div
+        style={{
+          backgroundColor: T.card,
+          borderRadius: "12px",
+          border: `1px solid ${T.border}`,
+          boxShadow: T.elevSm,
+          overflow: "hidden",
+          marginBottom: "20px",
+        }}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ backgroundColor: "#f8f8fa" }}>
+              <th style={{ ...thStyle, textAlign: "left", minWidth: 180 }}>Pré-Vendedor</th>
+              <th style={{ ...thStyle, textAlign: "center", minWidth: 80 }}>Mediana</th>
+              <th style={{ ...thStyle, textAlign: "center", minWidth: 60 }}>≤30min</th>
+              <th style={{ ...thStyle, textAlign: "center", minWidth: 50 }}>Total</th>
+              <th style={{ ...thStyle, textAlign: "center", minWidth: 70 }}>Com Ligação</th>
+              <th style={{ ...thStyle, textAlign: "center", minWidth: 60 }}>Pendentes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mainPVs.map((ps) => {
+              const squad = SQUADS.find((s) => s.preVenda === ps.name);
+              const sqColor = ps.squadId ? SQUAD_COLORS[ps.squadId] || T.azul600 : T.cinza600;
+              const barColor = ps.pctSub30 >= 70 ? "#16a34a" : ps.pctSub30 >= 40 ? "#d97706" : "#dc2626";
+              const pendColor = ps.dealsPendentes > 5 ? "#dc2626" : ps.dealsPendentes > 0 ? "#d97706" : T.cinza400;
+              return (
+                <tr key={ps.name}>
+                  <td style={{ ...tdStyle, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sqColor, flexShrink: 0 }} />
+                    <span>
+                      <span style={{ fontWeight: 600 }}>{ps.name}</span>
+                      {squad && <span style={{ color: T.cinza400, fontSize: "11px", marginLeft: "6px" }}>{squad.name}</span>}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: "center" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 10px",
+                        borderRadius: "10px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        backgroundColor: statusBg(ps.medianMinutes),
+                        color: statusColor(ps.medianMinutes),
+                      }}
+                    >
+                      {formatMinutes(ps.medianMinutes)}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600, color: barColor }}>{ps.pctSub30}%</td>
+                  <td style={{ ...tdStyle, textAlign: "center" }}>{ps.totalDeals}</td>
+                  <td style={{ ...tdStyle, textAlign: "center", color: "#16a34a", fontWeight: 600 }}>{ps.dealsComAcao}</td>
+                  <td style={{ ...tdStyle, textAlign: "center", color: pendColor, fontWeight: 600 }}>{ps.dealsPendentes}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Tabela deals recentes */}
@@ -228,104 +284,6 @@ function CalcDisclaimer() {
   );
 }
 
-// --- Card horizontal PV dos squads ---
-function BigPVCard({ ps }: { ps: PresellerSummary }) {
-  const squad = SQUADS.find((s) => s.preVenda === ps.name);
-  const sqColor = ps.squadId ? SQUAD_COLORS[ps.squadId] || T.azul600 : T.cinza600;
-  const medColor = statusColor(ps.medianMinutes);
-  const medBg = statusBg(ps.medianMinutes);
-  const barColor = ps.pctSub30 >= 70 ? "#16a34a" : ps.pctSub30 >= 40 ? "#d97706" : "#dc2626";
-
-  return (
-    <div
-      style={{
-        backgroundColor: T.card,
-        borderRadius: "14px",
-        border: `1px solid ${T.border}`,
-        boxShadow: T.elevSm,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "row",
-      }}
-    >
-      {/* Lado esquerdo: header colorido vertical */}
-      <div
-        style={{
-          backgroundColor: sqColor,
-          width: "180px",
-          minWidth: "180px",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          padding: "14px 12px",
-          gap: "4px",
-        }}
-      >
-        <span style={{ color: "#fff", fontWeight: 700, fontSize: "14px", textAlign: "center" }}>{ps.name}</span>
-        {squad && <span style={{ color: "rgba(255,255,255,0.75)", fontSize: "11px" }}>{squad.name}</span>}
-      </div>
-
-      {/* Centro: mediana + barra */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "14px 20px" }}>
-        <div style={{ fontSize: "10px", color: T.cinza600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-          Mediana
-        </div>
-        <div
-          style={{
-            display: "inline-block",
-            padding: "4px 16px",
-            borderRadius: "10px",
-            backgroundColor: medBg,
-            color: medColor,
-            fontSize: "24px",
-            fontWeight: 800,
-            fontVariantNumeric: "tabular-nums",
-            marginBottom: "8px",
-          }}
-        >
-          {formatMinutes(ps.medianMinutes)}
-        </div>
-        <div style={{ width: "100%", maxWidth: "180px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-            <span style={{ fontSize: "10px", color: T.cinza600 }}>≤30min</span>
-            <span style={{ fontSize: "10px", fontWeight: 700, color: barColor }}>{ps.pctSub30}%</span>
-          </div>
-          <div style={{ height: "6px", backgroundColor: "#f3f4f6", borderRadius: "3px", overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${ps.pctSub30}%`, backgroundColor: barColor, borderRadius: "3px", transition: "width 0.3s ease" }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Direita: stats */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          borderLeft: `1px solid ${T.border}`,
-          backgroundColor: "#fafafa",
-          padding: "10px 20px",
-          gap: "6px",
-          minWidth: "120px",
-        }}
-      >
-        <FooterStat label="Total" value={ps.totalDeals} />
-        <FooterStat label="Com ligação" value={ps.dealsComAcao} color="#16a34a" />
-        <FooterStat label="Pendentes" value={ps.dealsPendentes} color={ps.dealsPendentes > 5 ? "#dc2626" : ps.dealsPendentes > 0 ? "#d97706" : T.cinza400} />
-      </div>
-    </div>
-  );
-}
-
-function FooterStat({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div style={{ textAlign: "center", padding: "10px 6px" }}>
-      <div style={{ fontSize: "9px", color: T.cinza600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "2px" }}>{label}</div>
-      <div style={{ fontSize: "16px", fontWeight: 700, color: color || T.fg, fontVariantNumeric: "tabular-nums" }}>{value}</div>
-    </div>
-  );
-}
 
 // --- Summary pill ---
 function SummaryPill({ label, value, color, bg }: { label: string; value: string; color: string; bg: string }) {

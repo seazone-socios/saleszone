@@ -9,9 +9,23 @@ interface Props {
   loading: boolean;
 }
 
+function formatBRL(v: number): string {
+  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function pct(v: number): string {
   return `${v.toFixed(2)}%`;
 }
+
+const META_ADS_ACCOUNT = "205286032338340";
+function metaAdLink(adId: string): string {
+  return `https://www.facebook.com/adsmanager/manage/ads?act=${META_ADS_ACCOUNT}&selected_ad_ids=${adId}`;
+}
+
+const SEV_ORDER: Record<string, number> = { CRITICO: 0, ALERTA: 1, OK: 2 };
+
+type SortKey = "empreendimento" | "ad_name" | "spend" | "ctr" | "frequency" | "severidade";
+type SortDir = "asc" | "desc";
 
 const SEV_COLORS = {
   CRITICO: { border: T.destructive, bg: "#FEF2F2", text: T.destructive, cardBg: "#DC2626" },
@@ -22,6 +36,17 @@ const SEV_COLORS = {
 export function DiagnosticoMktView({ data, loading }: Props) {
   const [filtroEmp, setFiltroEmp] = useState("todos");
   const [filtroSev, setFiltroSev] = useState("todos");
+  const [sortKey, setSortKey] = useState<SortKey>("severidade");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "severidade" ? "asc" : "desc");
+    }
+  };
 
   // Flatten all empreendimentos for the summary table
   const allEmps = useMemo(() => {
@@ -57,14 +82,34 @@ export function DiagnosticoMktView({ data, loading }: Props) {
     return Array.from(set).sort();
   }, [allAds]);
 
-  // Filtered ads
+  // Filtered + sorted ads
   const filteredAds = useMemo(() => {
-    return allAds.filter((ad) => {
+    const filtered = allAds.filter((ad) => {
       if (filtroEmp !== "todos" && ad.empreendimento !== filtroEmp) return false;
       if (filtroSev !== "todos" && ad.severidade !== filtroSev) return false;
       return true;
     });
-  }, [allAds, filtroEmp, filtroSev]);
+    const dir = sortDir === "asc" ? 1 : -1;
+    return filtered.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "severidade":
+          cmp = (SEV_ORDER[a.severidade] ?? 2) - (SEV_ORDER[b.severidade] ?? 2);
+          if (cmp === 0) cmp = b.spend - a.spend;
+          break;
+        case "empreendimento":
+        case "ad_name":
+          cmp = a[sortKey].localeCompare(b[sortKey], "pt-BR");
+          break;
+        case "spend":
+        case "ctr":
+        case "frequency":
+          cmp = a[sortKey] - b[sortKey];
+          break;
+      }
+      return cmp * dir;
+    });
+  }, [allAds, filtroEmp, filtroSev, sortKey, sortDir]);
 
   if (loading && !data) {
     return (
@@ -248,15 +293,17 @@ export function DiagnosticoMktView({ data, loading }: Props) {
         </div>
 
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "800px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, textAlign: "left", minWidth: 130 }}>Empreendimento</th>
-                <th style={{ ...thStyle, textAlign: "left", minWidth: 200 }}>Ad</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>CTR</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Freq</th>
-                <th style={{ ...thStyle, textAlign: "center", minWidth: 60 }}>Severidade</th>
+                <SortTh label="Empreendimento" col="empreendimento" align="left" minW={130} sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Ad" col="ad_name" align="left" minW={180} sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Gasto" col="spend" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="CTR" col="ctr" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Freq" col="frequency" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Severidade" col="severidade" align="center" minW={60} sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th style={{ ...thStyle, textAlign: "left", minWidth: 200 }}>Diagnóstico</th>
+                <th style={{ ...thStyle, textAlign: "center", minWidth: 30 }} title="Abrir no Meta Ads">Link</th>
               </tr>
             </thead>
             <tbody>
@@ -270,9 +317,10 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
                   >
                     <td style={{ ...tdStyle, fontSize: "12px" }}>{ad.empreendimento}</td>
-                    <td style={{ ...tdStyle, fontSize: "12px", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }} title={ad.ad_name}>
+                    <td style={{ ...tdStyle, fontSize: "12px", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={ad.ad_name}>
                       {ad.ad_name}
                     </td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px" }}>{formatBRL(ad.spend)}</td>
                     <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px" }}>{pct(ad.ctr)}</td>
                     <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px" }}>{ad.frequency.toFixed(1)}</td>
                     <td style={{ ...tdStyle, textAlign: "center" }}>
@@ -292,6 +340,17 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                     </td>
                     <td style={{ ...tdStyle, fontSize: "11px", color: T.cinza700, whiteSpace: "normal", lineHeight: 1.4 }}>
                       {ad.diagnostico || "-"}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
+                      <a
+                        href={metaAdLink(ad.ad_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Ver no Meta Ads Manager"
+                        style={{ color: T.azul600, fontSize: "14px", textDecoration: "none" }}
+                      >
+                        &#8599;
+                      </a>
                     </td>
                   </tr>
                 );
@@ -347,6 +406,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </div>
       <div style={{ padding: "0" }}>{children}</div>
     </div>
+  );
+}
+
+function SortTh({ label, col, align, minW, sortKey, sortDir, onSort }: {
+  label: string; col: SortKey; align: "left" | "right" | "center"; minW?: number;
+  sortKey: SortKey; sortDir: SortDir; onSort: (k: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  const arrow = active ? (sortDir === "asc" ? " \u25B2" : " \u25BC") : "";
+  return (
+    <th
+      style={{ ...thStyle, textAlign: align, minWidth: minW, cursor: "pointer", userSelect: "none" }}
+      onClick={() => onSort(col)}
+    >
+      {label}{arrow}
+    </th>
   );
 }
 
