@@ -63,3 +63,61 @@ export interface DashboardResponse {
   metas: MetasData;
   syncedAt: string;
 }
+
+// Campanhas Meta Ads
+export interface MetaAdRow {
+  ad_id: string;
+  campaign_name: string;
+  adset_name: string;
+  ad_name: string;
+  empreendimento: string;
+  squad_id: number;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  cpl: number;
+  ctr: number;
+  cpm: number;
+  frequency: number;
+  cpc: number;
+  severidade: "OK" | "ALERTA" | "CRITICO";
+  diagnostico: string | null;
+}
+
+export interface CampanhasEmpSummary {
+  emp: string;
+  ads: number;
+  spend: number;
+  leads: number;
+  cpl: number;
+  criticos: number;
+  alertas: number;
+}
+
+export interface CampanhasSquadSummary {
+  id: number;
+  name: string;
+  empreendimentos: CampanhasEmpSummary[];
+  totalSpend: number;
+  totalLeads: number;
+  avgCpl: number;
+  criticos: number;
+  alertas: number;
+}
+
+export interface CampanhasSummary {
+  totalAds: number;
+  totalSpend: number;
+  totalLeads: number;
+  avgCpl: number;
+  criticos: number;
+  alertas: number;
+}
+
+export interface CampanhasData {
+  snapshotDate: string;
+  summary: CampanhasSummary;
+  squads: CampanhasSquadSummary[];
+  top10: MetaAdRow[];
+}

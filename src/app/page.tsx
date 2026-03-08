@@ -2,10 +2,11 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { T } from "@/lib/constants";
-import type { TabKey, AcompanhamentoData, AlinhamentoData } from "@/lib/types";
+import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData } from "@/lib/types";
 import { Header } from "@/components/dashboard/header";
 import { AcompanhamentoView } from "@/components/dashboard/acompanhamento-view";
 import { AlinhamentoView } from "@/components/dashboard/alinhamento-view";
+import { CampanhasView } from "@/components/dashboard/campanhas-view";
 
 export default function Dashboard() {
   const [mainView, setMainView] = useState("acompanhamento");
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [acompData, setAcompData] = useState<Record<string, AcompanhamentoData>>({});
   const [alinhData, setAlinhData] = useState<AlinhamentoData | null>(null);
+  const [campData, setCampData] = useState<CampanhasData | null>(null);
 
   const fetchAcomp = useCallback(async (tab: TabKey) => {
     setLoading(true);
@@ -41,17 +43,33 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchCamp = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/campanhas");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCampData(await res.json());
+    } catch (err) {
+      console.error("Fetch camp error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (mainView === "acompanhamento" && !acompData[activeTab]) {
       fetchAcomp(activeTab);
     } else if (mainView === "alinhamento" && !alinhData) {
       fetchAlinh();
+    } else if (mainView === "campanhas" && !campData) {
+      fetchCamp();
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefresh = () => {
     if (mainView === "acompanhamento") fetchAcomp(activeTab);
-    else fetchAlinh();
+    else if (mainView === "alinhamento") fetchAlinh();
+    else if (mainView === "campanhas") fetchCamp();
   };
 
   return (
@@ -74,13 +92,7 @@ export default function Dashboard() {
             <p style={{ fontSize: "14px", margin: 0 }}>Em breve — análise de ociosidade dos closers via Google Calendar</p>
           </div>
         )}
-        {mainView === "campanhas" && (
-          <div style={{ textAlign: "center", padding: "80px 20px", color: T.cinza600 }}>
-            <div style={{ fontSize: "40px", marginBottom: "16px" }}>📢</div>
-            <h3 style={{ fontSize: "18px", fontWeight: 600, color: T.fg, margin: "0 0 8px" }}>Campanhas</h3>
-            <p style={{ fontSize: "14px", margin: 0 }}>Em breve — acompanhamento de campanhas de marketing</p>
-          </div>
-        )}
+        {mainView === "campanhas" && <CampanhasView data={campData} loading={loading} />}
       </div>
     </div>
   );
