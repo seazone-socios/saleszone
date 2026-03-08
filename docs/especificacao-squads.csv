@@ -1,0 +1,11 @@
+Tabela,Colunas,
+"""nekt_trusted"".""pipedrive_v2_deals""",add_time,How to calculate MQL
+"""nekt_trusted"".""pipedrive_v2_deals""",Time of the qualification,How to calculate SQL
+"""nekt_trusted"".""pipedrive_v2_deals""",TIme of the meeting,How to calculate OPP
+"""nekt_trusted"".""pipedrive_v2_deals""",won_time,how to calculate won
+"""nekt_trusted"".""pipedrive_v2_users""",id / name,"TO correlate name with ID of ""nekt_trusted"".""pipedrive_v2_deals"""
+"""nekt_trusted"".""pipedrive_v2_pipelines""-query-results",id / name,To correlate the correct pipeline : Vendas Spot
+"""nekt_trusted"".""pipedrive_v2_deals""",status,"To fill the tab check squad, it will be the correlation of the owner vs empreendimentos that have the open status"
+"""nekt_trusted"".""pipedrive_v2_deals""",won_szi_meta_pago / won_szi_meta_direto,"Field to be used to calculate total meta of the month, should be divided by the total number of closers and split proportionaly int he squads"
+Meta de MQL SQL OPP,,"Deve-se calcular usando o valor da meta won calculado acima como base, deve-se pegar os 90 ultimos dias qtd de MQL, SQL, OPP WON e encontrar o valor de conversao de cada etapa, usando isso e o valor da meta de won, calcula-se as outras metas"
+,,As pessoas e empreendimentos sao os que estao na planilha

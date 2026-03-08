@@ -1,0 +1,367 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, ChevronLeft, Columns3 } from "lucide-react";
+import { T, TABS, SQUAD_COLORS, TAB_COLORS, NUM_DAYS, MONTHS_PT } from "@/lib/constants";
+import type { TabKey, AcompanhamentoData } from "@/lib/types";
+import { Pill, Tag, TH, cellStyle, cellRightStyle, hdrBaseStyle } from "./ui";
+
+interface Props {
+  data: AcompanhamentoData | null;
+  activeTab: TabKey;
+  setActiveTab: (tab: TabKey) => void;
+  loading: boolean;
+}
+
+export function AcompanhamentoView({ data, activeTab, setActiveTab, loading }: Props) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({ 1: true, 2: true, 3: true });
+  const [showTeamCols, setShowTeamCols] = useState(false);
+  const [hCol, setHCol] = useState<number | null>(null);
+
+  const toggle = (id: number) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
+
+  const dates = data?.dates || [];
+  const squads = data?.squads || [];
+  const grand = data?.grand || { totalMes: 0, metaToDate: 0, daily: [] };
+
+  const pct = grand.metaToDate > 0 ? Math.round((grand.totalMes / grand.metaToDate) * 100) : 0;
+  const cellBg = (i: number) => (hCol === i ? T.azul50 : dates[i]?.isWeekend ? "#FAFAFB" : "transparent");
+
+  const weekStarts = useMemo(() => {
+    const s = new Set<number>();
+    dates.forEach((d, i) => {
+      if (d.isSunday && i > 0) s.add(i);
+    });
+    return s;
+  }, [dates]);
+
+  if (loading && !data) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px", color: T.cinza600 }}>
+        Carregando dados do Pipedrive...
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "16px",
+          flexWrap: "wrap",
+          gap: "12px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "3px",
+            backgroundColor: T.bg,
+            borderRadius: "12px",
+            padding: "3px",
+            border: `1px solid ${T.border}`,
+          }}
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: "7px 22px",
+                borderRadius: "9999px",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "13px",
+                fontWeight: 500,
+                letterSpacing: "0.02em",
+                transition: "all 0.15s",
+                backgroundColor: activeTab === tab.key ? TAB_COLORS[tab.key] : "transparent",
+                color: activeTab === tab.key ? "#FFF" : T.mutedFg,
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <Pill label="Total 28d" value={grand.totalMes} />
+          <Pill label="Meta TD" value={grand.metaToDate} />
+          <Pill
+            label="% Meta"
+            value={`${pct}%`}
+            color={pct >= 100 ? T.verde600 : pct >= 60 ? T.laranja500 : T.destructive}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          backgroundColor: T.card,
+          borderRadius: "12px",
+          border: `1px solid ${T.border}`,
+          boxShadow: T.elevSm,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: showTeamCols ? "2400px" : "2100px" }}>
+            <thead>
+              <tr style={{ backgroundColor: T.fg }}>
+                <th colSpan={showTeamCols ? 5 : 3} style={{ ...hdrBaseStyle, borderBottom: "none" }} />
+                <th style={{ ...hdrBaseStyle, borderBottom: "none" }} />
+                <th style={{ ...hdrBaseStyle, borderBottom: "none" }} />
+                {(() => {
+                  const weeks: { start: number; count: number }[] = [];
+                  let cw = { start: 0, count: 0 };
+                  dates.forEach((d, i) => {
+                    if (weekStarts.has(i) && cw.count > 0) {
+                      weeks.push({ ...cw });
+                      cw = { start: i, count: 0 };
+                    }
+                    cw.count++;
+                  });
+                  if (cw.count > 0) weeks.push(cw);
+                  return weeks.map((w, wi) => (
+                    <th
+                      key={wi}
+                      colSpan={w.count}
+                      style={{
+                        ...hdrBaseStyle,
+                        textAlign: "center",
+                        borderBottom: "none",
+                        borderLeft: wi > 0 ? "2px solid rgba(255,255,255,0.15)" : "none",
+                        fontSize: "9px",
+                        color: "rgba(255,255,255,0.6)",
+                      }}
+                    >
+                      Sem. {wi + 1}
+                    </th>
+                  ));
+                })()}
+              </tr>
+              <tr style={{ backgroundColor: T.cinza50 }}>
+                <TH w={120}>Squad</TH>
+                {showTeamCols ? (
+                  <>
+                    <TH w={90}>
+                      <span
+                        style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}
+                        onClick={() => setShowTeamCols(false)}
+                      >
+                        <ChevronLeft size={11} style={{ color: T.primary }} /> Mkt
+                      </span>
+                    </TH>
+                    <TH w={120}>Pré-Venda</TH>
+                    <TH w={100}>Venda</TH>
+                  </>
+                ) : (
+                  <TH w={150}>
+                    <span
+                      style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}
+                      onClick={() => setShowTeamCols(true)}
+                    >
+                      <Columns3 size={11} style={{ color: T.primary }} /> Equipe
+                    </span>
+                  </TH>
+                )}
+                <TH w={170}>Empreendimento</TH>
+                <TH w={68} right>
+                  Total
+                </TH>
+                <TH w={68} right>
+                  Meta
+                </TH>
+                {dates.map((d, i) => (
+                  <TH
+                    key={i}
+                    w={52}
+                    right
+                    onMouseEnter={() => setHCol(i)}
+                    onMouseLeave={() => setHCol(null)}
+                    extraStyle={{
+                      backgroundColor: hCol === i ? T.azul50 : d.isWeekend ? "#FAFAFB" : undefined,
+                      borderLeft: weekStarts.has(i) ? `2px solid ${T.cinza200}` : undefined,
+                      paddingLeft: "4px",
+                      paddingRight: "4px",
+                    }}
+                  >
+                    <div style={{ lineHeight: "1.1" }}>
+                      <div
+                        style={{
+                          fontSize: "9px",
+                          color: d.isWeekend ? T.cinza400 : T.cinza600,
+                          fontWeight: 400,
+                          textTransform: "none",
+                        }}
+                      >
+                        {d.weekday}
+                      </div>
+                      <div>
+                        {d.label.split(" ")[0]}/{MONTHS_PT.indexOf(d.label.split(" ")[1]) + 1}
+                      </div>
+                    </div>
+                  </TH>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {squads.map((sq) => {
+                const isOpen = expanded[sq.id] !== false;
+                const clr = SQUAD_COLORS[sq.id] || T.azul600;
+                const sqTm = sq.rows.reduce((s, r) => s + r.totalMes, 0);
+                const sqD = new Array(NUM_DAYS).fill(0) as number[];
+                sq.rows.forEach((r) => r.daily.forEach((v, i) => (sqD[i] += v)));
+                return [
+                  <tr
+                    key={sq.id}
+                    onClick={() => toggle(sq.id)}
+                    style={{ cursor: "pointer", borderTop: `2px solid ${clr}33` }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.cinza50)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                  >
+                    <td style={{ ...cellStyle, fontWeight: 600 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                        {isOpen ? (
+                          <ChevronDown size={13} style={{ color: clr, flexShrink: 0 }} />
+                        ) : (
+                          <ChevronRight size={13} style={{ color: clr, flexShrink: 0 }} />
+                        )}
+                        <span
+                          style={{
+                            width: "7px",
+                            height: "7px",
+                            borderRadius: "9999px",
+                            backgroundColor: clr,
+                            flexShrink: 0,
+                          }}
+                        />
+                        {sq.name}
+                      </div>
+                    </td>
+                    {showTeamCols ? (
+                      <>
+                        <td style={{ ...cellStyle, color: T.cinza700, fontWeight: 500 }}>{sq.marketing}</td>
+                        <td style={{ ...cellStyle, color: T.cinza700, fontSize: "12px" }}>{sq.preVenda}</td>
+                        <td style={{ ...cellStyle, color: T.cinza700, fontWeight: 500 }}>{sq.venda}</td>
+                      </>
+                    ) : (
+                      <td style={{ ...cellStyle, color: T.cinza700 }}>
+                        <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>
+                          <Tag color={clr}>{sq.marketing}</Tag>
+                          <Tag color={T.cinza600}>{sq.preVenda.split(" ")[0]}</Tag>
+                          <Tag color={T.cinza600}>{sq.venda.split(" ")[0]}</Tag>
+                        </div>
+                      </td>
+                    )}
+                    <td style={{ ...cellStyle, fontWeight: 600, color: T.cinza600 }}>TOTAL</td>
+                    <td style={{ ...cellRightStyle, fontWeight: 700, color: T.primary }}>{sqTm}</td>
+                    <td style={{ ...cellRightStyle, fontWeight: 600 }}>{sq.metaToDate}</td>
+                    {sqD.map((v, i) => (
+                      <td
+                        key={i}
+                        style={{
+                          ...cellRightStyle,
+                          fontWeight: 600,
+                          backgroundColor: cellBg(i),
+                          borderLeft: weekStarts.has(i) ? `2px solid ${T.cinza200}` : undefined,
+                        }}
+                        onMouseEnter={() => setHCol(i)}
+                        onMouseLeave={() => setHCol(null)}
+                      >
+                        {v}
+                      </td>
+                    ))}
+                  </tr>,
+                  ...(isOpen
+                    ? sq.rows.map((r, ri) => (
+                        <tr
+                          key={`${sq.id}-${ri}`}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.cinza50)}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                        >
+                          <td style={cellStyle} />
+                          {showTeamCols ? (
+                            <>
+                              <td style={cellStyle} />
+                              <td style={cellStyle} />
+                              <td style={cellStyle} />
+                            </>
+                          ) : (
+                            <td style={cellStyle} />
+                          )}
+                          <td style={{ ...cellStyle, paddingLeft: "28px", color: T.cinza800 }}>{r.emp}</td>
+                          <td style={cellRightStyle}>{r.totalMes}</td>
+                          <td style={cellRightStyle} />
+                          {r.daily.map((v, i) => (
+                            <td
+                              key={i}
+                              style={{
+                                ...cellRightStyle,
+                                color: v === 0 ? T.cinza300 : T.cardFg,
+                                backgroundColor: cellBg(i),
+                                borderLeft: weekStarts.has(i) ? `2px solid ${T.cinza200}` : undefined,
+                              }}
+                              onMouseEnter={() => setHCol(i)}
+                              onMouseLeave={() => setHCol(null)}
+                            >
+                              {v}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    : []),
+                ];
+              })}
+              <tr style={{ backgroundColor: T.fg }}>
+                <td colSpan={showTeamCols ? 5 : 3} style={{ ...cellStyle, fontWeight: 700, color: T.primaryFg }}>
+                  TOTAL GERAL
+                </td>
+                <td style={{ ...cellRightStyle, fontWeight: 700, color: T.primaryFg }}>{grand.totalMes}</td>
+                <td style={{ ...cellRightStyle, fontWeight: 700, color: T.primaryFg }}>{grand.metaToDate}</td>
+                {grand.daily.map((v, i) => (
+                  <td
+                    key={i}
+                    style={{
+                      ...cellRightStyle,
+                      fontWeight: 700,
+                      color: T.primaryFg,
+                      borderLeft: weekStarts.has(i) ? "2px solid rgba(255,255,255,0.12)" : undefined,
+                    }}
+                  >
+                    {v}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: "12px",
+          display: "flex",
+          gap: "16px",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+          {Object.entries(SQUAD_COLORS).map(([n, cc]) => (
+            <div key={n} style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+              <span style={{ width: "7px", height: "7px", borderRadius: "9999px", backgroundColor: cc }} />
+              <span style={{ fontSize: "11px", fontWeight: 500, color: T.cinza600 }}>Squad {n}</span>
+            </div>
+          ))}
+        </div>
+        <span style={{ fontSize: "11px", color: T.cinza400 }}>
+          Pipedrive · {new Date().toLocaleDateString("pt-BR")}
+        </span>
+      </div>
+    </>
+  );
+}
