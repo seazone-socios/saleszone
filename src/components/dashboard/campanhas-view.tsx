@@ -106,13 +106,15 @@ export function CampanhasView({ data, loading }: Props) {
                     <th style={{ ...thStyle, textAlign: "left", minWidth: 180 }}>Empreendimento</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Gasto</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Leads</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>CPL</th>
+                    <ThInfo label="CPL" tip="Custo por Lead (Gasto / Leads)" />
                     <th style={{ ...thStyle, textAlign: "right" }}>MQL</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>CMQL</th>
+                    <ThInfo label="CMQL" tip="Custo por MQL (Gasto / MQLs)" />
                     <th style={{ ...thStyle, textAlign: "right" }}>SQL</th>
+                    <ThInfo label="CSQL" tip="Custo por SQL (Gasto / SQLs)" />
                     <th style={{ ...thStyle, textAlign: "right" }}>OPP</th>
+                    <ThInfo label="COPP" tip="Custo por Oportunidade (Gasto / OPPs)" />
                     <th style={{ ...thStyle, textAlign: "right" }}>WON</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>CPW</th>
+                    <ThInfo label="CPW" tip="Custo por Ganho (Gasto / WONs)" />
                   </tr>
                 </thead>
                 <tbody>
@@ -156,7 +158,13 @@ export function CampanhasView({ data, loading }: Props) {
                             {emp.sql > 0 ? emp.sql : "-"}
                           </td>
                           <td style={{ ...tdStyle, textAlign: "right" }}>
+                            {emp.csql > 0 ? formatBRL(emp.csql) : "-"}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "right" }}>
                             {emp.opp > 0 ? emp.opp : "-"}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "right" }}>
+                            {emp.copp > 0 ? formatBRL(emp.copp) : "-"}
                           </td>
                           <td
                             style={{
@@ -209,7 +217,7 @@ function AdRows({ ads }: { ads: MetaAdRow[] }) {
         <td style={subThStyle}>CPL</td>
         <td style={subThStyle}>CPC</td>
         <td style={subThStyle}>CTR</td>
-        <td colSpan={2} style={subThStyle}>Severidade</td>
+        <td colSpan={4} style={subThStyle}>Severidade</td>
       </tr>
       {ads.map((ad) => {
         const sevColor =
@@ -257,7 +265,7 @@ function AdRows({ ads }: { ads: MetaAdRow[] }) {
               {ad.ctr > 0 ? `${ad.ctr.toFixed(2)}%` : "-"}
             </td>
             <td
-              colSpan={2}
+              colSpan={4}
               style={{
                 ...tdStyle,
                 textAlign: "right",
@@ -272,6 +280,60 @@ function AdRows({ ads }: { ads: MetaAdRow[] }) {
         );
       })}
     </>
+  );
+}
+
+function ThInfo({ label, tip }: { label: string; tip: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <th style={{ ...thStyle, textAlign: "right", position: "relative" }}>
+      {label}
+      <span
+        onClick={(e) => { e.stopPropagation(); setShow((v) => !v); }}
+        style={{
+          display: "inline-block",
+          marginLeft: "3px",
+          width: "13px",
+          height: "13px",
+          borderRadius: "50%",
+          backgroundColor: "#D1D3DB",
+          color: "#FFF",
+          fontSize: "9px",
+          fontWeight: 700,
+          lineHeight: "13px",
+          textAlign: "center",
+          cursor: "pointer",
+          verticalAlign: "middle",
+        }}
+        title={tip}
+      >
+        i
+      </span>
+      {show && (
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "100%",
+            marginTop: "4px",
+            backgroundColor: "#1F2937",
+            color: "#FFF",
+            fontSize: "11px",
+            fontWeight: 400,
+            padding: "6px 10px",
+            borderRadius: "6px",
+            whiteSpace: "nowrap",
+            zIndex: 20,
+            textTransform: "none",
+            letterSpacing: "0",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {tip}
+        </div>
+      )}
+    </th>
   );
 }
 
