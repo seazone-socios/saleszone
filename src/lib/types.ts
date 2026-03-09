@@ -88,6 +88,7 @@ export interface MetaAdRow {
   sql: number;
   opp: number;
   won: number;
+  wonOutro: number;
   cmql: number;
   csql: number;
   copp: number;
@@ -112,6 +113,7 @@ export interface CampanhasEmpSummary {
   sql: number;
   opp: number;
   won: number;
+  wonOutro: number;
   cpw: number;
   adsDetail: MetaAdRow[];
 }

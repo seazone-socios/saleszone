@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
     const monthPrefix = snapshotDate!.substring(0, 7);
     const startDate = `${monthPrefix}-01`;
 
-    // Queries paralelas: Meta Ads + Funil por ad (lifetime) + Contagens diárias (funil empreendimento)
-    const [metaRes, funnelRes, countsRes] = await Promise.all([
+    // Queries paralelas: Meta Ads + Funil por ad + Contagens diárias + WON cross-empreendimento
+    const [metaRes, funnelRes, countsRes, crossWonRes] = await Promise.all([
       supabase
         .from("squad_meta_ads")
         .select("*")
@@ -42,11 +42,13 @@ export async function GET(req: NextRequest) {
       supabase
         .from("squad_daily_counts")
         .select("tab, empreendimento, count, date"),
+      supabase.rpc("get_ad_won_cross_emp"),
     ]);
 
     if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
     if (funnelRes.error) console.warn(`Funnel query error (non-fatal): ${funnelRes.error.message}`);
     if (countsRes.error) console.warn(`Counts query error (non-fatal): ${countsRes.error.message}`);
+    if (crossWonRes.error) console.warn(`Cross-emp WON query error (non-fatal): ${crossWonRes.error.message}`);
 
     const ads = metaRes.data || [];
 
@@ -84,6 +86,12 @@ export async function GET(req: NextRequest) {
         opp: Number(row.opp),
         won: Number(row.won),
       });
+    }
+
+    // Map<ad_id, won_other> — WONs de ads que foram ganhos em outro empreendimento
+    const crossWonMap = new Map<string, number>();
+    for (const row of crossWonRes.data || []) {
+      crossWonMap.set(row.ad_id, Number(row.won_other) || 0);
     }
 
     // Summary global
@@ -146,6 +154,7 @@ export async function GET(req: NextRequest) {
               sql: funnel.sql,
               opp: funnel.opp,
               won: funnel.won,
+              wonOutro: crossWonMap.get(r.ad_id) || 0,
               cmql: funnel.mql > 0 ? Math.round((sp / funnel.mql) * 100) / 100 : 0,
               csql: funnel.sql > 0 ? Math.round((sp / funnel.sql) * 100) / 100 : 0,
               copp: funnel.opp > 0 ? Math.round((sp / funnel.opp) * 100) / 100 : 0,
@@ -182,6 +191,7 @@ export async function GET(req: NextRequest) {
           sql: empSql,
           opp: empOpp,
           won: empWon,
+          wonOutro: adsDetail.reduce((s, a) => s + a.wonOutro, 0),
           cpw: empWon > 0 ? Math.round((spend / empWon) * 100) / 100 : 0,
           adsDetail,
         };
@@ -270,6 +280,7 @@ export async function GET(req: NextRequest) {
         sql: funnel.sql,
         opp: funnel.opp,
         won: funnel.won,
+        wonOutro: crossWonMap.get(r.ad_id) || 0,
         cmql: funnel.mql > 0 ? Math.round((sp / funnel.mql) * 100) / 100 : 0,
         csql: funnel.sql > 0 ? Math.round((sp / funnel.sql) * 100) / 100 : 0,
         copp: funnel.opp > 0 ? Math.round((sp / funnel.opp) * 100) / 100 : 0,

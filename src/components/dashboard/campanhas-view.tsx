@@ -147,15 +147,16 @@ export function CampanhasView({ data, loading }: Props) {
             {hasData ? (
               <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                 <colgroup>
-                  <col style={{ width: "20%" }} />  {/* Nome */}
+                  <col style={{ width: "18%" }} />  {/* Nome */}
                   <col style={{ width: "8%" }} />   {/* Gasto */}
                   <col style={{ width: "6%" }} />   {/* Impr */}
-                  <col style={{ width: "6%" }} />   {/* Clicks */}
-                  <col style={{ width: "6%" }} />   {/* Leads */}
-                  <col style={{ width: "6%" }} />   {/* MQL */}
-                  <col style={{ width: "6%" }} />   {/* SQL */}
-                  <col style={{ width: "6%" }} />   {/* OPP */}
-                  <col style={{ width: "6%" }} />   {/* WON */}
+                  <col style={{ width: "5%" }} />   {/* Clicks */}
+                  <col style={{ width: "5%" }} />   {/* Leads */}
+                  <col style={{ width: "5%" }} />   {/* MQL */}
+                  <col style={{ width: "5%" }} />   {/* SQL */}
+                  <col style={{ width: "5%" }} />   {/* OPP */}
+                  <col style={{ width: "5%" }} />   {/* WON */}
+                  <col style={{ width: "5%" }} />   {/* WON* */}
                   <col style={{ width: "5%" }} />   {/* CPC */}
                   <col style={{ width: "5%" }} />   {/* CPL */}
                   <col style={{ width: "5%" }} />   {/* CMQL */}
@@ -168,7 +169,7 @@ export function CampanhasView({ data, loading }: Props) {
                   <tr style={{ backgroundColor: "#EAEBEF" }}>
                     <th rowSpan={2} style={{ ...thStyle, textAlign: "left", backgroundColor: "#EAEBEF", borderRight: "1px solid #D9DAE0" }}>Nome</th>
                     <th rowSpan={2} style={{ ...thStyle, textAlign: "right", backgroundColor: "#EAEBEF", borderRight: "1px solid #D9DAE0" }}>Gasto</th>
-                    <th colSpan={7} style={{ ...thStyle, textAlign: "center", backgroundColor: "#EEF0F7", borderBottom: "none", borderRight: "1px solid #D9DAE0", fontSize: "9px", letterSpacing: "0.06em" }}>Volume (funil)</th>
+                    <th colSpan={8} style={{ ...thStyle, textAlign: "center", backgroundColor: "#EEF0F7", borderBottom: "none", borderRight: "1px solid #D9DAE0", fontSize: "9px", letterSpacing: "0.06em" }}>Volume (funil)</th>
                     <th colSpan={6} style={{ ...thStyle, textAlign: "center", backgroundColor: "#F5EDE8", borderBottom: "none", fontSize: "9px", letterSpacing: "0.06em" }}>Custo por Etapa</th>
                   </tr>
                   {/* Linha 2: colunas individuais */}
@@ -179,7 +180,8 @@ export function CampanhasView({ data, loading }: Props) {
                     <th style={{ ...thStyle, textAlign: "right", backgroundColor: "#EEF0F7" }}>MQL</th>
                     <th style={{ ...thStyle, textAlign: "right", backgroundColor: "#EEF0F7" }}>SQL</th>
                     <th style={{ ...thStyle, textAlign: "right", backgroundColor: "#EEF0F7" }}>OPP</th>
-                    <th style={{ ...thStyle, textAlign: "right", backgroundColor: "#EEF0F7", borderRight: "1px solid #D9DAE0" }}>WON</th>
+                    <th style={{ ...thStyle, textAlign: "right", backgroundColor: "#EEF0F7" }}>WON</th>
+                    <ThInfo label="WON*" tip="WONs rastreados via ad deste emp, mas ganhos em OUTRO empreendimento" bg="#EEF0F7" border />
                     <ThInfo label="CPC" tip="Custo por Clique (Gasto / Clicks)" bg="#F5EDE8" />
                     <ThInfo label="CPL" tip="Custo por Lead (Gasto / Leads)" bg="#F5EDE8" />
                     <ThInfo label="CMQL" tip="Custo por MQL (Gasto / MQLs)" bg="#F5EDE8" />
@@ -228,6 +230,7 @@ export function CampanhasView({ data, loading }: Props) {
                           <td style={{ ...tdStyle, textAlign: "right" }}>{emp.sql > 0 ? emp.sql : "-"}</td>
                           <td style={{ ...tdStyle, textAlign: "right" }}>{emp.opp > 0 ? emp.opp : "-"}</td>
                           <td style={{ ...tdStyle, textAlign: "right", fontWeight: emp.won > 0 ? 700 : 400, color: emp.won > 0 ? T.verde700 : T.cinza300 }}>{emp.won > 0 ? emp.won : "-"}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontWeight: emp.wonOutro > 0 ? 600 : 400, color: emp.wonOutro > 0 ? T.laranja500 : T.cinza300 }}>{emp.wonOutro > 0 ? emp.wonOutro : "-"}</td>
                           {/* Custo: CPC, CPL, CMQL, CSQL, COPP, CPW */}
                           <td style={{ ...tdStyle, textAlign: "right" }}>{emp.cpc > 0 ? formatBRL(emp.cpc) : "-"}</td>
                           <td style={{ ...tdStyle, textAlign: "right" }}>{emp.cpl > 0 ? formatBRL(emp.cpl) : "-"}</td>
@@ -293,6 +296,7 @@ function AdRows({ ads }: { ads: MetaAdRow[] }) {
             <td style={{ ...adTd, textAlign: "right" }}>{ad.sql > 0 ? ad.sql : "-"}</td>
             <td style={{ ...adTd, textAlign: "right" }}>{ad.opp > 0 ? ad.opp : "-"}</td>
             <td style={{ ...adTd, textAlign: "right", fontWeight: ad.won > 0 ? 700 : 400, color: ad.won > 0 ? T.verde700 : T.cinza300 }}>{ad.won > 0 ? ad.won : "-"}</td>
+            <td style={{ ...adTd, textAlign: "right", fontWeight: ad.wonOutro > 0 ? 600 : 400, color: ad.wonOutro > 0 ? T.laranja500 : T.cinza300 }}>{ad.wonOutro > 0 ? ad.wonOutro : "-"}</td>
             {/* Custo: CPC, CPL, CMQL, CSQL, COPP, CPW */}
             <td style={{ ...adTd, textAlign: "right" }}>{ad.cpc > 0 ? formatBRL(ad.cpc) : "-"}</td>
             <td style={{ ...adTd, textAlign: "right" }}>{ad.cpl > 0 ? formatBRL(ad.cpl) : "-"}</td>
@@ -307,10 +311,10 @@ function AdRows({ ads }: { ads: MetaAdRow[] }) {
   );
 }
 
-function ThInfo({ label, tip, bg }: { label: string; tip: string; bg?: string }) {
+function ThInfo({ label, tip, bg, border }: { label: string; tip: string; bg?: string; border?: boolean }) {
   const [show, setShow] = useState(false);
   return (
-    <th style={{ ...thStyle, textAlign: "right", position: "relative", backgroundColor: bg || thStyle.backgroundColor }}>
+    <th style={{ ...thStyle, textAlign: "right", position: "relative", backgroundColor: bg || thStyle.backgroundColor, ...(border ? { borderRight: "1px solid #D9DAE0" } : {}) }}>
       {label}
       <span
         onMouseEnter={() => setShow(true)}
