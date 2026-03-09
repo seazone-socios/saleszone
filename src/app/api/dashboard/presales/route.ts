@@ -214,11 +214,11 @@ export async function GET() {
       return b.totalDeals - a.totalDeals;
     });
 
-    // Deals recentes: filtrar últimos 3 dias, pendentes primeiro
+    // Deals recentes: pendentes sempre aparecem, respondidos só últimos 3 dias
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 3);
     const sorted = [...dealsWithBizTime]
-      .filter((d) => new Date(d.transbordo_at) >= cutoff)
+      .filter((d) => d.is_pending || new Date(d.transbordo_at) >= cutoff)
       .sort((a, b) => {
         if (a.is_pending && !b.is_pending) return -1;
         if (!a.is_pending && b.is_pending) return 1;
