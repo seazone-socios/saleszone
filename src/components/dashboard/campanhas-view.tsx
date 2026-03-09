@@ -16,6 +16,7 @@ function formatBRL(v: number): string {
 
 export function CampanhasView({ data, loading }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showInfo, setShowInfo] = useState(false);
 
   if (loading && !data) {
     return (
@@ -47,19 +48,58 @@ export function CampanhasView({ data, loading }: Props) {
     <>
       {/* Summary cards */}
       <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap", alignItems: "center" }}>
-        <BrlPillWithTip label="Investimento" value={summary.totalSpendMonth} tip="Dados do mês atual" />
-        <StatPillWithTip label="Leads" value={summary.totalLeads} color={T.verde600} tip="Dados do mês atual" />
-        <StatPill label="MQL" value={summary.totalMql} />
-        <StatPill label="WON" value={summary.totalWon} color={T.verde600} />
+        <BrlPillWithTip label="Investimento" value={summary.totalSpendMonth} tip="Gasto no mês atual" />
+        <StatPillWithTip label="Leads" value={summary.totalLeads} color={T.verde600} tip="Leads do mês atual" />
+        <StatPillWithTip label="MQL" value={summary.totalMql} tip="MQLs do mês atual" />
+        <StatPillWithTip label="WON" value={summary.totalWon} color={T.verde600} tip="WONs do mês atual" />
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           <BrlPill label="CPL" value={lifetimeCpl} />
           <span style={{ color: T.cinza300, fontSize: "16px", fontWeight: 300 }}>|</span>
           <BrlPill label="CPW" value={lifetimeCpw} />
         </div>
-        <span style={{ fontSize: "11px", color: T.cinza400, marginLeft: "auto" }}>
-          Lifetime · gasto mês {monthLabel(snapshotDate)} · {summary.totalAds} ads
-        </span>
+        <button
+          onClick={() => setShowInfo(!showInfo)}
+          style={{
+            marginLeft: "auto",
+            background: "none",
+            border: "1px solid #D1D3DB",
+            borderRadius: "6px",
+            padding: "4px 10px",
+            fontSize: "11px",
+            color: T.cinza600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+          }}
+        >
+          {showInfo ? "▲" : "▼"} {summary.totalAds} ads · {monthLabel(snapshotDate)}
+        </button>
       </div>
+
+      {/* Info toggle */}
+      {showInfo && (
+        <div style={{
+          backgroundColor: "#F8F9FB",
+          border: "1px solid #E6E7EA",
+          borderRadius: "8px",
+          padding: "12px 16px",
+          marginBottom: "16px",
+          fontSize: "12px",
+          color: T.cinza600,
+          lineHeight: "1.6",
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: "6px", color: T.cinza800, fontSize: "13px" }}>Como ler os dados</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 24px" }}>
+            <span><b>Investimento, Leads:</b> dados do mês atual ({monthLabel(snapshotDate)})</span>
+            <span><b>MQL, SQL, OPP, WON:</b> contagens do mês atual (Pipedrive)</span>
+            <span><b>CPL / CPW:</b> custo por lead / custo por ganho (lifetime)</span>
+            <span><b>Tabelas:</b> gasto e volume lifetime (desde início do ad)</span>
+            <span><b>CMQL, CSQL, COPP:</b> gasto lifetime ÷ funil do mês</span>
+            <span><b>Filtro:</b> apenas ads com status ACTIVE na Meta</span>
+          </div>
+        </div>
+      )}
 
       {/* Per squad */}
       {squads.map((sq) => {

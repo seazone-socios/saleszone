@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
       supabase.rpc("get_ad_funnel_counts", { start_date: startDate }),
       supabase
         .from("squad_daily_counts")
-        .select("tab, empreendimento, count"),
+        .select("tab, empreendimento, count, date")
+        .gte("date", startDate)
+        .lte("date", snapshotDate),
     ]);
 
     if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     const ads = metaRes.data || [];
 
-    // Map<empreendimento, {mql, sql, opp, won}> do squad_daily_counts (sem filtro de data — soma tudo)
+    // Map<empreendimento, {mql, sql, opp, won}> do squad_daily_counts (filtrado pelo mês)
     const countsMap = new Map<string, { mql: number; sql: number; opp: number; won: number }>();
     for (const row of countsRes.data || []) {
       const emp = row.empreendimento;
