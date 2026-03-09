@@ -18,11 +18,12 @@ interface HeaderProps {
   setMainView: (v: string) => void;
   onRefresh: () => void;
   loading: boolean;
+  lastUpdated?: Date | null;
   user?: { email: string; name: string };
   onLogout?: () => void;
 }
 
-export function Header({ mainView, setMainView, onRefresh, loading, user, onLogout }: HeaderProps) {
+export function Header({ mainView, setMainView, onRefresh, loading, lastUpdated, user, onLogout }: HeaderProps) {
   return (
     <header
       style={{
@@ -31,6 +32,7 @@ export function Header({ mainView, setMainView, onRefresh, loading, user, onLogo
         padding: "12px 20px",
         display: "flex",
         alignItems: "center",
+        flexWrap: "wrap",
         gap: "12px",
         position: "sticky",
         top: 0,
@@ -136,11 +138,18 @@ export function Header({ mainView, setMainView, onRefresh, loading, user, onLogo
       <button style={pillBtnStyle()}>
         <Calendar size={13} /> 4 semanas
       </button>
-      <button onClick={onRefresh} disabled={loading} style={pillBtnPrimaryStyle()}>
-        <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> {loading ? "Carregando..." : "Atualizar"}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button onClick={onRefresh} disabled={loading} style={pillBtnPrimaryStyle()}>
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> {loading ? "Atualizando..." : "Atualizar"}
+        </button>
+        {lastUpdated && (
+          <span style={{ fontSize: "11px", color: T.mutedFg, whiteSpace: "nowrap" }}>
+            Última atualização: {lastUpdated.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
+      </div>
       {user && (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "4px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "4px", flexShrink: 0 }}>
           <span style={{ fontSize: "12px", color: T.mutedFg, maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {user.name || user.email}
           </span>

@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [mainView, setMainView] = useState("campanhas");
   const [activeTab, setActiveTab] = useState<TabKey>("mql");
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [acompData, setAcompData] = useState<Record<string, AcompanhamentoData>>({});
   const [alinhData, setAlinhData] = useState<AlinhamentoData | null>(null);
   const [campData, setCampData] = useState<CampanhasData | null>(null);
@@ -143,19 +144,38 @@ export default function Dashboard() {
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRefresh = () => {
-    if (mainView === "acompanhamento") fetchAcomp(activeTab);
-    else if (mainView === "alinhamento") fetchAlinh();
-    else if (mainView === "ociosidade") fetchOcio();
-    else if (mainView === "balanceamento") fetchBalanc();
-    else if (mainView === "campanhas") fetchCamp();
-    else if (mainView === "diagnostico-mkt") fetchCamp();
-    else if (mainView === "presales") fetchPresales();
+  const getSyncFunctions = (view: string): string[] => {
+    if (view === "campanhas" || view === "diagnostico-mkt") return ["meta-ads"];
+    if (view === "ociosidade") return ["calendar"];
+    return ["dashboard"];
+  };
+
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ functions: getSyncFunctions(mainView) }),
+      });
+      if (mainView === "acompanhamento") await fetchAcomp(activeTab);
+      else if (mainView === "alinhamento") await fetchAlinh();
+      else if (mainView === "ociosidade") await fetchOcio();
+      else if (mainView === "balanceamento") await fetchBalanc();
+      else if (mainView === "campanhas") await fetchCamp();
+      else if (mainView === "diagnostico-mkt") await fetchCamp();
+      else if (mainView === "presales") await fetchPresales();
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error("Refresh error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div style={{ fontFamily: T.font, backgroundColor: T.cinza50, minHeight: "100vh", letterSpacing: "0.02em" }}>
-      <Header mainView={mainView} setMainView={setMainView} onRefresh={handleRefresh} loading={loading} user={user} onLogout={handleLogout} />
+      <Header mainView={mainView} setMainView={setMainView} onRefresh={handleRefresh} loading={loading} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} />
       <div style={{ padding: "16px 20px", maxWidth: "2200px", margin: "0 auto" }}>
         {mainView === "acompanhamento" && (
           <AcompanhamentoView
