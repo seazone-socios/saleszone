@@ -80,7 +80,7 @@ export function PresalesView({ data, loading }: Props) {
       {/* Summary pills */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap", alignItems: "stretch" }}>
         <SummaryPill
-          label="Mediana Global"
+          label="Média Tempo de Resposta"
           value={formatMinutes(totals.medianMinutes)}
           color={statusColor(totals.medianMinutes)}
           bg={statusBg(totals.medianMinutes)}
