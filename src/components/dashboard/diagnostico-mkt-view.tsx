@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { T } from "@/lib/constants";
+import { T, SQUAD_COLORS, SQUADS } from "@/lib/constants";
 import type { CampanhasData, MetaAdRow, CampanhasEmpSummary } from "@/lib/types";
 
 interface Props {
@@ -36,6 +36,7 @@ const SEV_COLORS = {
 export function DiagnosticoMktView({ data, loading }: Props) {
   const [filtroEmp, setFiltroEmp] = useState("todos");
   const [filtroSev, setFiltroSev] = useState("todos");
+  const [filtroSquad, setFiltroSquad] = useState("todos");
   const [sortKey, setSortKey] = useState<SortKey>("severidade");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -47,18 +48,6 @@ export function DiagnosticoMktView({ data, loading }: Props) {
       setSortDir(key === "severidade" ? "asc" : "desc");
     }
   };
-
-  // Flatten all empreendimentos for the summary table
-  const allEmps = useMemo(() => {
-    if (!data) return [];
-    const emps: CampanhasEmpSummary[] = [];
-    for (const sq of data.squads) {
-      for (const emp of sq.empreendimentos) {
-        if (emp.ads > 0) emps.push(emp);
-      }
-    }
-    return emps.sort((a, b) => b.criticos - a.criticos || b.alertas - a.alertas);
-  }, [data]);
 
   // Flatten all ads with diagnostico for the full table
   const allAds = useMemo(() => {
@@ -87,6 +76,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
     const filtered = allAds.filter((ad) => {
       if (filtroEmp !== "todos" && ad.empreendimento !== filtroEmp) return false;
       if (filtroSev !== "todos" && ad.severidade !== filtroSev) return false;
+      if (filtroSquad !== "todos" && String(ad.squad_id) !== filtroSquad) return false;
       return true;
     });
     const dir = sortDir === "asc" ? 1 : -1;
@@ -109,7 +99,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
       }
       return cmp * dir;
     });
-  }, [allAds, filtroEmp, filtroSev, sortKey, sortDir]);
+  }, [allAds, filtroEmp, filtroSev, filtroSquad, sortKey, sortDir]);
 
   if (loading && !data) {
     return (
@@ -156,43 +146,67 @@ export function DiagnosticoMktView({ data, loading }: Props) {
         />
       </div>
 
-      {/* Resumo por Empreendimento */}
+      {/* Resumo por Empreendimento — agrupado por Squad */}
       <Section title="Resumo por Empreendimento">
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ ...thStyle, textAlign: "left" }}>Empreendimento</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Ads</th>
-              <th style={{ ...thStyle, textAlign: "right", color: T.destructive }}>Críticos</th>
-              <th style={{ ...thStyle, textAlign: "right", color: T.laranja500 }}>Alertas</th>
-              <th style={{ ...thStyle, textAlign: "right", color: T.verde600 }}>OK</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allEmps.map((emp) => {
-              const ok = emp.ads - emp.criticos - emp.alertas;
-              return (
-                <tr
-                  key={emp.emp}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.cinza50)}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
-                >
-                  <td style={{ ...tdStyle }}>{emp.emp}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{emp.ads}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: emp.criticos > 0 ? T.destructive : T.cinza300, fontWeight: emp.criticos > 0 ? 700 : 400 }}>
-                    {emp.criticos}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: emp.alertas > 0 ? T.laranja500 : T.cinza300, fontWeight: emp.alertas > 0 ? 700 : 400 }}>
-                    {emp.alertas}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: ok > 0 ? T.verde600 : T.cinza300 }}>
-                    {ok}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {data.squads.map((sq) => {
+          const emps = sq.empreendimentos.filter((e) => e.ads > 0).sort((a, b) => b.criticos - a.criticos || b.alertas - a.alertas);
+          if (emps.length === 0) return null;
+          const sqCriticos = emps.reduce((s, e) => s + e.criticos, 0);
+          const sqAlertas = emps.reduce((s, e) => s + e.alertas, 0);
+          const sqColor = SQUAD_COLORS[sq.id] || T.cinza600;
+          return (
+            <div key={sq.id}>
+              <div style={{ backgroundColor: sqColor, color: "#FFF", padding: "8px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 600 }}>{sq.name}</span>
+                {sqCriticos > 0 && (
+                  <span style={{ fontSize: "11px", backgroundColor: "rgba(255,255,255,0.25)", padding: "2px 8px", borderRadius: "9999px" }}>
+                    {sqCriticos} crítico{sqCriticos > 1 ? "s" : ""}
+                  </span>
+                )}
+                {sqAlertas > 0 && (
+                  <span style={{ fontSize: "11px", backgroundColor: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: "9999px" }}>
+                    {sqAlertas} alerta{sqAlertas > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...thStyle, textAlign: "left" }}>Empreendimento</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Ads</th>
+                    <th style={{ ...thStyle, textAlign: "right", color: T.destructive }}>Críticos</th>
+                    <th style={{ ...thStyle, textAlign: "right", color: T.laranja500 }}>Alertas</th>
+                    <th style={{ ...thStyle, textAlign: "right", color: T.verde600 }}>OK</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emps.map((emp) => {
+                    const ok = emp.ads - emp.criticos - emp.alertas;
+                    return (
+                      <tr
+                        key={emp.emp}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.cinza50)}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                      >
+                        <td style={{ ...tdStyle }}>{emp.emp}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{emp.ads}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: emp.criticos > 0 ? T.destructive : T.cinza300, fontWeight: emp.criticos > 0 ? 700 : 400 }}>
+                          {emp.criticos}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: emp.alertas > 0 ? T.laranja500 : T.cinza300, fontWeight: emp.alertas > 0 ? 700 : 400 }}>
+                          {emp.alertas}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: ok > 0 ? T.verde600 : T.cinza300 }}>
+                          {ok}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
       </Section>
 
       {/* Top 12 — Ação Imediata */}
@@ -208,17 +222,32 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                   style={{
                     backgroundColor: sev.cardBg,
                     borderRadius: "10px",
+                    borderTop: `4px solid ${SQUAD_COLORS[ad.squad_id] || T.cinza600}`,
                     padding: "14px 16px",
                     boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
                     color: "#FFF",
                     display: "flex",
                     flexDirection: "column",
                     gap: "6px",
+                    overflow: "hidden",
                   }}
                 >
                   {/* Header */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "11px", opacity: 0.85 }}>{ad.empreendimento}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: 600,
+                        backgroundColor: SQUAD_COLORS[ad.squad_id] || T.cinza600,
+                        color: "#FFF",
+                        padding: "1px 6px",
+                        borderRadius: "9999px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {SQUADS.find((s) => s.id === ad.squad_id)?.name || "—"}
+                    </span>
+                    <span style={{ fontSize: "11px", opacity: 0.85, flex: 1 }}>{ad.empreendimento}</span>
                     <span
                       style={{
                         fontSize: "10px",
@@ -228,6 +257,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                         borderRadius: "9999px",
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {ad.severidade}
@@ -287,6 +317,19 @@ export function DiagnosticoMktView({ data, loading }: Props) {
               <option value="OK">OK</option>
             </select>
           </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: T.cinza700 }}>
+            Squad
+            <select
+              value={filtroSquad}
+              onChange={(e) => setFiltroSquad(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="todos">Todos</option>
+              {SQUADS.map((sq) => (
+                <option key={sq.id} value={String(sq.id)}>{sq.name}</option>
+              ))}
+            </select>
+          </label>
           <span style={{ fontSize: "11px", color: T.cinza400, alignSelf: "center" }}>
             {filteredAds.length} ads
           </span>
@@ -316,7 +359,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
                   >
-                    <td style={{ ...tdStyle, fontSize: "12px" }}>{ad.empreendimento}</td>
+                    <td style={{ ...tdStyle, fontSize: "12px", borderLeft: `3px solid ${SQUAD_COLORS[ad.squad_id] || T.cinza300}` }}>{ad.empreendimento}</td>
                     <td style={{ ...tdStyle, fontSize: "12px", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={ad.ad_name}>
                       {ad.ad_name}
                     </td>

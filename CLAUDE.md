@@ -72,7 +72,7 @@ src/
 - **pg_cron:** job 48 `sync-squad-meta-ads-daily` às 10h UTC (7h BRT)
 - REGRA: Match empreendimento sorted by name length DESC (evitar "Jurerê Spot II" capturar "Jurerê Spot III")
 - REGRA: Alias "Vistas de Anitá" → "Vistas de Anitá II" (campaign_name sem sufixo)
-- REGRA: NÃO filtrar por effective_status=ACTIVE — buscar todos os ads com atividade no período
+- REGRA: Filtrar por effective_status=ACTIVE — mostrar apenas ads ativos com dados lifetime
 - REGRA: Edge function v6 loga unmatched_campaigns para detectar novos empreendimentos/aliases
 - REGRA: vault.create_secret(secret, name, description) — 1º param é o VALOR, 2º é o NOME
 - REGRA: Para Lead Ads usar `onsite_conversion.lead_grouped` (formulários reais). `action_type === "lead"` inclui pixel leads e infla ~3-4x
