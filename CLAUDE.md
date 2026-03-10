@@ -24,6 +24,7 @@ Supabase Tables → API Routes (Next.js) → JSON → React Frontend → Vercel
 | squad_calendar_events | Eventos Google Calendar dos closers (ociosidade) |
 | squad_closer_rules | Regras dos 15 closers (email, prefixo, setor) |
 | squad_meta_ads | Snapshot diário de ads Meta Ads SZI com diagnósticos |
+| squad_presales_response | Deals com tempo de resposta dos pré-vendedores (30 dias) |
 
 ## Edge Function: sync-squad-dashboard
 - **Modos:** daily (1 tab), alignment, metas, all
@@ -89,6 +90,18 @@ src/
 - **pg_cron:** `sync-squad-calendar-daily` às 10h UTC (7h BRT)
 - **PENDENTE:** Credenciais Google Service Account (requer admin Workspace)
 - REGRA: Domain-wide delegation scope = `calendar.events.readonly`
+
+## Edge Function: sync-squad-presales (10/03/2026)
+- **Objetivo:** Popular `squad_presales_response` com dados de deals e atividades do Pipedrive
+- **Pipeline:** 28 (canal Marketing)
+- **Pré-vendedores:** lidos de `config_pre_vendedores` (user_id, user_name)
+- **Lógica:** fetch deals por owner (últimos 30 dias) → fetch activities type=call → match first call per deal
+- **transbordo_at:** `add_time` do deal (entrada no pipeline)
+- **first_action_at:** primeira atividade de tipo `call` (done=true) no deal
+- **Upsert:** deleta tudo e insere fresh (snapshot completo)
+- **Token Pipedrive:** lido do Vault via RPC `vault_read_secret`
+- **pg_cron:** configurar job `sync-squad-presales-daily` a cada 2h
+- **Código:** `supabase/functions/sync-squad-presales/index.ts`
 
 ## Env Vars
 - `NEXT_PUBLIC_SUPABASE_URL` — URL do Supabase (Vercel + .env.local)

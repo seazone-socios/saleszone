@@ -6,6 +6,7 @@ const FUNCTION_MAP: Record<string, { name: string; body?: Record<string, unknown
   "meta-ads": { name: "sync-squad-meta-ads" },
   dashboard: { name: "sync-squad-dashboard", body: { mode: "all" } },
   calendar: { name: "sync-squad-calendar" },
+  presales: { name: "sync-squad-presales" },
 };
 
 interface SyncRequest {
