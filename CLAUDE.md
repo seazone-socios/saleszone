@@ -50,7 +50,7 @@ src/
       dashboard/acompanhamento/route.ts      — Heatmap diario por empreendimento
       dashboard/alinhamento/route.ts         — Distribuicao deals por owner/squad
       dashboard/campanhas/route.ts           — Meta Ads por squad/empreendimento
-      dashboard/funil/route.ts               — Funil impressions→clicks→leads→MQL→SQL→OPP→WON
+      dashboard/funil/route.ts               — Funil Leads→MQL→SQL→OPP→Reserva→Contrato→WON
       dashboard/ociosidade/route.ts          — Disponibilidade closers (Google Calendar)
       dashboard/presales/route.ts            — Tempo de resposta pre-vendedores
       dashboard/regras-mql/route.ts          — Regras e taxas de qualificacao MQL
@@ -62,6 +62,7 @@ src/
     diagnostico-mkt-view.tsx                 — Outliers CPL/CTR/CPM, acoes imediatas
     ociosidade-view.tsx                      — Ocupacao closers (passado/futuro)
     balanceamento-view.tsx                   — Taxas de qualificacao por empreendimento/fonte
+    resultados-view.tsx                      — Funil comercial Leads→WON + Reserva/Contrato
     presales-view.tsx                        — Performance pre-vendedores + deals recentes
     ui.tsx                                   — Componentes reutilizaveis
   lib/
@@ -82,13 +83,13 @@ supabase/
 ## Tabelas Supabase
 | Tabela | Descricao |
 |--------|-----------|
-| `squad_daily_counts` | Contagens diarias por tab (mql/sql/opp/won) x empreendimento (35 dias) |
+| `squad_daily_counts` | Contagens diarias por tab (mql/sql/opp/won/reserva/contrato) x empreendimento (35 dias). CHECK constraint inclui todos os 6 tabs. |
 | `squad_alignment` | Deals abertos por empreendimento x owner |
 | `squad_metas` | Metas mensais por squad x tab (upsert month,squad_id,tab) |
 | `squad_ratios` | Ratios 90d MQL→SQL→OPP→WON e contagens (1 row por mes) |
 | `squad_calendar_events` | Eventos Google Calendar dos closers |
 | `squad_closer_rules` | Regras dos 15 closers (email, prefixo, setor) |
-| `squad_meta_ads` | Snapshot diario de ads Meta Ads SZI com diagnosticos |
+| `squad_meta_ads` | Snapshot diario de ads Meta Ads SZI com diagnosticos. Campos `spend`/`leads` sao lifetime; usar `spend_month`/`leads_month` para dados do mes. |
 | `squad_presales_response` | Deals com tempo de resposta dos pre-vendedores (30 dias) |
 | `config_pre_vendedores` | Configuracao de pre-vendedores (user_id, user_name, pipeline_id) |
 | `nekt_meta26_metas` | Metas mensais WON (fonte externa, campo `data` formato DD/MM/YYYY) |
@@ -174,9 +175,11 @@ Total: 5 closers. Metas WON divididas por closer e distribuidas proporcionalment
 
 ## Pipedrive API — Armadilhas Conhecidas
 - `/deals` endpoint **IGNORA** `pipeline_id` param silenciosamente — retorna TODOS os pipelines
+- `/deals` endpoint **IGNORA** `stage_id` param tambem — retorna TODOS os stages. Deduplicar por `deal.id` obrigatorio
+- `/deals` retorna deals de TODOS os pipelines — filtrar `deal.pipeline_id === 28` no codigo
 - `/pipelines/{id}/deals` retorna **SOMENTE** deals abertos, ignora param `status`
 - `/pipelines/{id}/deals` retorna `user_id` como **integer** (nao objeto como `/deals`)
-- Para deals won/lost do pipeline 28: usar `/deals?status=X&stage_id=Y` com os 14 stage IDs
+- Para deals won/lost do pipeline 28: usar `/deals?status=X&stage_id=Y` com os 14 stage IDs + dedup por deal.id + filtro pipeline_id
 - Pipeline 28 stage IDs: `[392, 184, 186, 338, 346, 339, 187, 340, 208, 312, 313, 311, 191, 192]`
 - Pipeline 28 tem ~1300 open, ~2900 won, **58k+ lost** — lost deals PRECISAM de sort + cutoff 90d
 - Limite de filters atingido — usar stage_id ao inves de criar filters
@@ -201,6 +204,10 @@ O botao no header chama `POST /api/sync` com `{"functions":["dashboard"]}` que e
 
 Depois re-busca dados da view atual. Total: ~41s.
 
+**CUIDADO — Sync parcial:** Se o Vercel timeout matar a requisicao antes de daily-won/lost rodarem,
+o daily-open ja SUBSTITUIU os dados (replace=true) e won/lost nao fizeram merge. Resultado:
+dados incompletos (so deals abertos). O front mostra banner de warning quando isso acontece.
+
 Outras views usam functions diferentes:
 - Campanhas/Diagnostico Mkt: `["meta-ads"]`
 - Ociosidade: `["calendar"]`
@@ -213,6 +220,7 @@ Outras views usam functions diferentes:
 - Estilos: inline styles com tokens de `T` (constants.ts), NAO Tailwind nos components
 - Dados sempre vem do Supabase, NUNCA do Pipedrive direto no frontend
 - Squads hardcoded em `src/lib/constants.ts`
+- Match de nomes (alinhamento) usa NFD normalize para ignorar acentos — Pipedrive pode ter "Patricio" sem acento vs constants com "Patrício"
 
 ## Env Vars (.env.local + Vercel)
 - `NEXT_PUBLIC_SUPABASE_URL` — URL do Supabase

@@ -33,7 +33,13 @@ const SQUADS = [
 ];
 const TOTAL_CLOSERS = SQUADS.reduce((sum, sq) => sum + sq.closers, 0);
 const TABS = ["mql", "sql", "opp", "won"] as const;
+const ALL_TABS = ["mql", "sql", "opp", "won", "reserva", "contrato"] as const;
 type Tab = typeof TABS[number];
+type AllTab = typeof ALL_TABS[number];
+
+// Stage IDs for Reserva and Contrato
+const STAGE_RESERVA = 191;
+const STAGE_CONTRATO = 192;
 
 // Pipeline 28 stage IDs (for querying won/lost deals)
 const PIPELINE_STAGES = [392, 184, 186, 338, 346, 339, 187, 340, 208, 312, 313, 311, 191, 192];
@@ -82,6 +88,8 @@ function countDeals(
 ) {
   let mkt = 0;
   for (const deal of deals) {
+    // Filter to pipeline 28 only (/deals endpoint returns ALL pipelines)
+    if (deal.pipeline_id !== PIPELINE_ID) continue;
     if (!isMarketingDeal(deal)) continue;
     mkt++;
     const emp = getEmpreendimento(deal);
@@ -139,6 +147,45 @@ async function writeDailyCounts(supabase: any, countsPerTab: Record<Tab, Map<str
   return result;
 }
 
+// ---- Count deals in specific stages (snapshot for today) ----
+function countDealsByStage(
+  deals: any[],
+  stageCounts: Record<"reserva" | "contrato", Map<string, number>>,
+) {
+  const today = new Date().toISOString().substring(0, 10);
+  for (const deal of deals) {
+    if (!isMarketingDeal(deal)) continue;
+    const emp = getEmpreendimento(deal);
+    if (!emp) continue;
+    const stageId = deal.stage_id;
+    if (stageId === STAGE_RESERVA) {
+      const key = `${today}|${emp}`;
+      stageCounts.reserva.set(key, (stageCounts.reserva.get(key) || 0) + 1);
+    } else if (stageId === STAGE_CONTRATO) {
+      const key = `${today}|${emp}`;
+      stageCounts.contrato.set(key, (stageCounts.contrato.get(key) || 0) + 1);
+    }
+  }
+}
+
+async function writeStageCounts(supabase: any, stageCounts: Record<"reserva" | "contrato", Map<string, number>>) {
+  const today = new Date().toISOString().substring(0, 10);
+  for (const tab of ["reserva", "contrato"] as const) {
+    // Delete previous snapshot data for this tab
+    const { error: delErr } = await supabase.from("squad_daily_counts").delete().eq("tab", tab);
+    if (delErr) console.error(`Delete error ${tab}:`, delErr.message);
+    const rows = Array.from(stageCounts[tab].entries()).map(([key, count]) => {
+      const [date, empreendimento] = key.split("|");
+      return { date, tab, empreendimento, count, synced_at: new Date().toISOString() };
+    });
+    if (rows.length > 0) {
+      const { error } = await supabase.from("squad_daily_counts").insert(rows);
+      if (error) console.error(`Insert error ${tab}:`, error.message);
+    }
+    console.log(`  ${tab}: ${rows.length} rows`);
+  }
+}
+
 // ---- Mode: daily-open (pipeline endpoint, replaces counts) ----
 async function syncDailyOpen(apiToken: string, supabase: any) {
   const { startDate, endDate } = getDateRange();
@@ -146,6 +193,9 @@ async function syncDailyOpen(apiToken: string, supabase: any) {
 
   const countsPerTab: Record<Tab, Map<string, number>> = {
     mql: new Map(), sql: new Map(), opp: new Map(), won: new Map(),
+  };
+  const stageCounts: Record<"reserva" | "contrato", Map<string, number>> = {
+    reserva: new Map(), contrato: new Map(),
   };
   let start = 0;
   let total = 0;
@@ -156,11 +206,17 @@ async function syncDailyOpen(apiToken: string, supabase: any) {
     if (!res.data || res.data.length === 0) break;
     total += res.data.length;
     countDeals(res.data, startDate, endDate, countsPerTab);
+    countDealsByStage(res.data, stageCounts);
     if (!res.additional_data?.pagination?.more_items_in_collection) break;
     start += 500;
   }
-  console.log(`  Open deals: ${total}`);
-  return writeDailyCounts(supabase, countsPerTab, startDate, endDate, true);
+  const reservaTotal = Array.from(stageCounts.reserva.values()).reduce((a, b) => a + b, 0);
+  const contratoTotal = Array.from(stageCounts.contrato.values()).reduce((a, b) => a + b, 0);
+  console.log(`  Open deals: ${total}, reserva=${reservaTotal}, contrato=${contratoTotal}`);
+  // Write main counts first, then stage counts (so stage counts aren't overwritten)
+  const mainResult = await writeDailyCounts(supabase, countsPerTab, startDate, endDate, true);
+  await writeStageCounts(supabase, stageCounts);
+  return { ...mainResult, reserva: reservaTotal, contrato: contratoTotal };
 }
 
 // ---- Mode: daily-status (uses stage_id filter, merges with existing) ----
@@ -178,6 +234,9 @@ async function syncDailyByStatus(apiToken: string, supabase: any, status: string
   let totalDeals = 0;
   let totalMkt = 0;
   let skippedStages = 0;
+  // Deduplicate: /deals endpoint ignores stage_id param (same as pipeline_id),
+  // so each stage query returns ALL deals of that status, causing 14x duplication.
+  const seenDealIds = new Set<number>();
 
   for (const stageId of PIPELINE_STAGES) {
     let start = 0;
@@ -191,8 +250,16 @@ async function syncDailyByStatus(apiToken: string, supabase: any, status: string
         start: String(start),
       });
       if (!res.data || res.data.length === 0) break;
-      totalDeals += res.data.length;
-      totalMkt += countDeals(res.data, startDate, endDate, countsPerTab);
+
+      // Filter out deals already seen from previous stage queries
+      const newDeals = res.data.filter((d: any) => {
+        if (seenDealIds.has(d.id)) return false;
+        seenDealIds.add(d.id);
+        return true;
+      });
+
+      totalDeals += newDeals.length;
+      totalMkt += countDeals(newDeals, startDate, endDate, countsPerTab);
 
       // Check if the oldest deal in this page is before cutoff
       const oldestAddTime = res.data[res.data.length - 1]?.add_time?.substring(0, 10) || "";
@@ -206,7 +273,7 @@ async function syncDailyByStatus(apiToken: string, supabase: any, status: string
     }
     if (stoppedEarly) skippedStages++;
   }
-  console.log(`  ${status}: ${totalDeals} processed, ${totalMkt} marketing, ${skippedStages} stages stopped early`);
+  console.log(`  ${status}: ${totalDeals} unique deals (${seenDealIds.size} seen), ${totalMkt} marketing, ${skippedStages} stages stopped early`);
   return writeDailyCounts(supabase, countsPerTab, startDate, endDate, false);
 }
 
