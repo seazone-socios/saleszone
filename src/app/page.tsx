@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { T } from "@/lib/constants";
-import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData } from "@/lib/types";
+import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Header } from "@/components/dashboard/header";
 import { AcompanhamentoView } from "@/components/dashboard/acompanhamento-view";
@@ -13,6 +13,7 @@ import { CampanhasView } from "@/components/dashboard/campanhas-view";
 import { DiagnosticoMktView } from "@/components/dashboard/diagnostico-mkt-view";
 import { OciosidadeView } from "@/components/dashboard/ociosidade-view";
 import { PresalesView } from "@/components/dashboard/presales-view";
+import { ResultadosView } from "@/components/dashboard/resultados-view";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -27,6 +28,8 @@ export default function Dashboard() {
   const [balancData, setBalancData] = useState<RegrasMqlData | null>(null);
   const [ocioData, setOcioData] = useState<OciosidadeData | null>(null);
   const [presalesData, setPresalesData] = useState<PresalesData | null>(null);
+  const [funilData, setFunilData] = useState<FunilData | null>(null);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -125,6 +128,19 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchFunil = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/funil");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setFunilData(await res.json());
+    } catch (err) {
+      console.error("Fetch funil error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (mainView === "acompanhamento" && !acompData[activeTab]) {
       fetchAcomp(activeTab);
@@ -141,6 +157,8 @@ export default function Dashboard() {
       fetchCamp();
     } else if (mainView === "presales" && !presalesData) {
       fetchPresales();
+    } else if (mainView === "resultados" && !funilData) {
+      fetchFunil();
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -148,17 +166,28 @@ export default function Dashboard() {
     if (view === "campanhas" || view === "diagnostico-mkt") return ["meta-ads"];
     if (view === "ociosidade") return ["calendar"];
     if (view === "presales") return ["presales"];
+    if (view === "resultados") return ["dashboard", "meta-ads"];
     return ["dashboard"];
   };
 
   const handleRefresh = async () => {
     setLoading(true);
+    setSyncWarning(null);
     try {
-      await fetch("/api/sync", {
+      const syncRes = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ functions: getSyncFunctions(mainView) }),
       });
+      const syncData = await syncRes.json().catch(() => null);
+      if (syncData?.results) {
+        const failed = (syncData.results as Array<{ function: string; status: string; error?: string }>)
+          .filter((r) => r.status === "error");
+        if (failed.length > 0) {
+          const names = failed.map((f) => f.function).join(", ");
+          setSyncWarning(`Sync parcial: ${names} falharam. Os dados podem estar incompletos.`);
+        }
+      }
       if (mainView === "acompanhamento") await fetchAcomp(activeTab);
       else if (mainView === "alinhamento") await fetchAlinh();
       else if (mainView === "ociosidade") await fetchOcio();
@@ -166,9 +195,11 @@ export default function Dashboard() {
       else if (mainView === "campanhas") await fetchCamp();
       else if (mainView === "diagnostico-mkt") await fetchCamp();
       else if (mainView === "presales") await fetchPresales();
+      else if (mainView === "resultados") await fetchFunil();
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Refresh error:", err);
+      setSyncWarning("Erro ao atualizar: a conexão foi interrompida. Os dados podem estar incompletos.");
     } finally {
       setLoading(false);
     }
@@ -177,6 +208,42 @@ export default function Dashboard() {
   return (
     <div style={{ fontFamily: T.font, backgroundColor: T.cinza50, minHeight: "100vh", letterSpacing: "0.02em" }}>
       <Header mainView={mainView} setMainView={setMainView} onRefresh={handleRefresh} loading={loading} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} />
+      {syncWarning && (
+        <div
+          style={{
+            margin: "0 20px",
+            padding: "10px 16px",
+            backgroundColor: T.vermelho50 || "#fef2f2",
+            border: `1px solid ${T.destructive}44`,
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            maxWidth: "2200px",
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
+          <span style={{ fontSize: "13px", color: T.destructive, fontWeight: 500 }}>
+            {syncWarning}
+          </span>
+          <button
+            onClick={() => setSyncWarning(null)}
+            style={{
+              background: "none",
+              border: "none",
+              color: T.destructive,
+              cursor: "pointer",
+              fontSize: "16px",
+              padding: "0 4px",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div style={{ padding: "16px 20px", maxWidth: "2200px", margin: "0 auto" }}>
         {mainView === "acompanhamento" && (
           <AcompanhamentoView
@@ -191,6 +258,7 @@ export default function Dashboard() {
         {mainView === "balanceamento" && <BalanceamentoView data={balancData} ocioData={ocioData} loading={loading} />}
         {mainView === "campanhas" && <CampanhasView data={campData} loading={loading} />}
         {mainView === "presales" && <PresalesView data={presalesData} loading={loading} />}
+        {mainView === "resultados" && <ResultadosView data={funilData} loading={loading} />}
         {mainView === "diagnostico-mkt" && <DiagnosticoMktView data={campData} loading={loading} />}
         {mainView === "venda" && (
           <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
