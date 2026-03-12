@@ -324,8 +324,8 @@ function Disclaimer() {
 function SevDot({ ad }: { ad: MetaAdRow }) {
   const [show, setShow] = useState(false);
   const sevColor =
-    ad.severidade === "CRITICO" ? T.destructive : ad.severidade === "ALERTA" ? T.laranja500 : T.verde600;
-  const sevLabel = ad.severidade === "CRITICO" ? "Crítico" : ad.severidade === "ALERTA" ? "Alerta" : "OK";
+    ad.severidade === "CRITICO" ? T.destructive : ad.severidade === "ALERTA" ? T.laranja500 : ad.severidade === "OPORTUNIDADE" ? T.primary : T.verde600;
+  const sevLabel = ad.severidade === "CRITICO" ? "Crítico" : ad.severidade === "ALERTA" ? "Alerta" : ad.severidade === "OPORTUNIDADE" ? "Oportunidade" : "OK";
   const diagnosticos = ad.diagnostico ? ad.diagnostico.split(" | ") : [];
 
   return (

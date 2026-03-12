@@ -23,7 +23,7 @@ function metaAdLink(adId: string): string {
   return `https://www.facebook.com/adsmanager/manage/ads?act=${META_ADS_ACCOUNT}&filtering=${filtering}&selected_ad_ids=${adId}`;
 }
 
-const SEV_ORDER: Record<string, number> = { CRITICO: 0, ALERTA: 1, OK: 2 };
+const SEV_ORDER: Record<string, number> = { CRITICO: 0, ALERTA: 1, OPORTUNIDADE: 2, OK: 3 };
 
 type SortKey = "empreendimento" | "ad_name" | "spend" | "leads" | "mql" | "opp" | "won" | "cpl" | "cmql" | "copp" | "cpw" | "ctr" | "frequency" | "severidade" | "squad_id";
 type SortDir = "asc" | "desc";
@@ -31,6 +31,7 @@ type SortDir = "asc" | "desc";
 const SEV_COLORS = {
   CRITICO: { border: T.destructive, bg: "#FEF2F2", text: T.destructive, cardBg: "#DC2626" },
   ALERTA: { border: T.laranja500, bg: "#FFFBEB", text: "#92400E", cardBg: "#F59E0B" },
+  OPORTUNIDADE: { border: T.primary, bg: T.azul50, text: T.primary, cardBg: T.primary },
   OK: { border: T.verde600, bg: T.verde50, text: T.verde700, cardBg: T.verde600 },
 } as const;
 
@@ -132,7 +133,8 @@ export function DiagnosticoMktView({ data, loading }: Props) {
   const totalActiveAds = allAds.length;
   const activeCriticos = allAds.filter((a) => a.severidade === "CRITICO").length;
   const activeAlertas = allAds.filter((a) => a.severidade === "ALERTA").length;
-  const okCount = totalActiveAds - activeCriticos - activeAlertas;
+  const activeOportunidades = allAds.filter((a) => a.severidade === "OPORTUNIDADE").length;
+  const okCount = totalActiveAds - activeCriticos - activeAlertas - activeOportunidades;
 
   return (
     <>
@@ -158,6 +160,13 @@ export function DiagnosticoMktView({ data, loading }: Props) {
           color="#FFF"
           bgColor={T.laranja500}
         />
+        <SummaryCard
+          label="Oportunidades"
+          value={String(activeOportunidades)}
+          sub="Candidatos a mais budget"
+          color="#FFF"
+          bgColor={T.primary}
+        />
       </div>
 
       {/* Resumo por Empreendimento — agrupado por Squad */}
@@ -169,6 +178,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
               <th style={{ ...thStyle, textAlign: "right", width: 70 }}>Ads</th>
               <th style={{ ...thStyle, textAlign: "right", width: 70, color: T.destructive }}>Críticos</th>
               <th style={{ ...thStyle, textAlign: "right", width: 70, color: T.laranja500 }}>Alertas</th>
+              <th style={{ ...thStyle, textAlign: "right", width: 70, color: T.primary }}>Oport.</th>
               <th style={{ ...thStyle, textAlign: "right", width: 70, color: T.verde600 }}>OK</th>
             </tr>
           </thead>
@@ -182,16 +192,18 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                   ads: activeAds.length,
                   criticos: activeAds.filter((a) => a.severidade === "CRITICO").length,
                   alertas: activeAds.filter((a) => a.severidade === "ALERTA").length,
+                  oportunidades: activeAds.filter((a) => a.severidade === "OPORTUNIDADE").length,
                 };
               }).filter((e) => e.ads > 0).sort((a, b) => b.criticos - a.criticos || b.alertas - a.alertas);
               if (emps.length === 0) return null;
               const sqCriticos = emps.reduce((s, e) => s + e.criticos, 0);
               const sqAlertas = emps.reduce((s, e) => s + e.alertas, 0);
+              const sqOportunidades = emps.reduce((s, e) => s + e.oportunidades, 0);
               const sqColor = SQUAD_COLORS[sq.id] || T.cinza600;
               return (
                 <Fragment key={sq.id}>
                   <tr>
-                    <td colSpan={5} style={{ backgroundColor: sqColor, color: "#FFF", padding: "8px 16px" }}>
+                    <td colSpan={6} style={{ backgroundColor: sqColor, color: "#FFF", padding: "8px 16px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         <span style={{ fontSize: "13px", fontWeight: 600 }}>{sq.name}</span>
                         {sqCriticos > 0 && (
@@ -204,11 +216,16 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                             {sqAlertas} alerta{sqAlertas > 1 ? "s" : ""}
                           </span>
                         )}
+                        {sqOportunidades > 0 && (
+                          <span style={{ fontSize: "11px", backgroundColor: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: "9999px" }}>
+                            {sqOportunidades} oportunidade{sqOportunidades > 1 ? "s" : ""}
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>
                   {emps.map((emp) => {
-                    const ok = emp.ads - emp.criticos - emp.alertas;
+                    const ok = emp.ads - emp.criticos - emp.alertas - emp.oportunidades;
                     return (
                       <tr
                         key={emp.emp}
@@ -222,6 +239,9 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", color: emp.alertas > 0 ? T.laranja500 : T.cinza300, fontWeight: emp.alertas > 0 ? 700 : 400 }}>
                           {emp.alertas}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: emp.oportunidades > 0 ? T.primary : T.cinza300, fontWeight: emp.oportunidades > 0 ? 700 : 400 }}>
+                          {emp.oportunidades}
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", color: ok > 0 ? T.verde600 : T.cinza300 }}>
                           {ok}
@@ -357,6 +377,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
               <option value="todos">Todos</option>
               <option value="CRITICO">Crítico</option>
               <option value="ALERTA">Alerta</option>
+              <option value="OPORTUNIDADE">Oportunidade</option>
               <option value="OK">OK</option>
             </select>
           </label>
@@ -407,7 +428,7 @@ export function DiagnosticoMktView({ data, loading }: Props) {
                 return (
                   <tr
                     key={ad.ad_id}
-                    style={{ backgroundColor: ad.severidade === "CRITICO" ? "#FEF2F2" : ad.severidade === "ALERTA" ? "#FFFBEB" : "" }}
+                    style={{ backgroundColor: ad.severidade === "CRITICO" ? "#FEF2F2" : ad.severidade === "ALERTA" ? "#FFFBEB" : ad.severidade === "OPORTUNIDADE" ? T.azul50 : "" }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
                   >

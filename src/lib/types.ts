@@ -97,7 +97,7 @@ export interface MetaAdRow {
   cpm: number;
   frequency: number;
   cpc: number;
-  severidade: "OK" | "ALERTA" | "CRITICO";
+  severidade: "OK" | "ALERTA" | "CRITICO" | "OPORTUNIDADE";
   diagnostico: string | null;
   effective_status: "ACTIVE" | "PAUSED";
   // Funil por ad (rastreamento ad → deal)
@@ -291,6 +291,68 @@ export interface FunilData {
   month: string; // YYYY-MM
   squads: FunilSquad[];
   grand: FunilEmpreendimento; // totais globais
+}
+
+// Planejamento — Conversão por mídia paga vs histórico
+export interface PlanejamentoMetrics {
+  leads: number;
+  mql: number;
+  sql: number;
+  opp: number;
+  won: number;
+  spend: number;
+  cpl: number;
+  cmql: number;
+  copp: number;
+  cpw: number;
+  mqlToSql: number;
+  sqlToOpp: number;
+  oppToWon: number;
+}
+
+export interface PlanejamentoEmpRow {
+  emp: string;
+  squadId: number;
+  current: PlanejamentoMetrics;
+  historical: PlanejamentoMetrics;
+  efficiency: "high" | "medium" | "low";
+}
+
+export interface PlanejamentoData {
+  month: string;
+  empreendimentos: PlanejamentoEmpRow[];
+  totals: { current: PlanejamentoMetrics; historical: PlanejamentoMetrics };
+}
+
+// Orçamento — Controle de budget mensal
+export interface OrcamentoData {
+  mes: string;
+  orcamentoTotal: number;
+  gastoAtual: number;
+  gastoDiario: number;
+  diasNoMes: number;
+  diasPassados: number;
+  projecaoMes: number;
+  ritmoIdeal: number;
+  status: "ok" | "alerta" | "critico";
+  squads: OrcamentoSquadBreakdown[];
+  snapshotDate: string;
+}
+
+export interface OrcamentoEmpBreakdown {
+  emp: string;
+  gastoAtual: number;
+  gastoDiario: number;
+  campaignsActive: number;
+}
+
+export interface OrcamentoSquadBreakdown {
+  id: number;
+  name: string;
+  gastoAtual: number;
+  gastoDiario: number;
+  campaignsActive: number;
+  empreendimentos: OrcamentoEmpBreakdown[];
 }
 
 // Pré-Venda — Tempo de resposta dos pré-vendedores

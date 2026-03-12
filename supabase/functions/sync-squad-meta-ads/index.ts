@@ -113,6 +113,7 @@ function applyDiagnostics(rows) {
   const b = {
     cpl_med: median(cpls),
     cpl_p75: percentile(cpls, 75),
+    ctr_med: median(ctrs),
     ctr_p25: percentile(ctrs, 25),
     cpm_med: median(cpms)
   };
@@ -164,6 +165,33 @@ function applyDiagnostics(rows) {
     ].some((v)=>nameLower.includes(v)) && r.ctr < 1.0 && r.ctr > 0) {
       diags.push(`Video com CTR ${r.ctr.toFixed(2)}%. Melhorar hook nos primeiros 3 segundos`);
       if (severity === "OK") severity = "ALERTA";
+    }
+    // Oportunidade: ads OK com performance acima da mediana e espaço para escalar
+    if (severity === "OK" && r.leads >= 3 && r.spend >= 100) {
+      let oppScore = 0;
+      const oppDiags = [];
+      if (r.cpl > 0 && b.cpl_med > 0 && r.cpl < b.cpl_med) {
+        oppScore++;
+        oppDiags.push(`CPL R$${r.cpl.toFixed(0)} esta ${Math.round((1 - r.cpl / b.cpl_med) * 100)}% abaixo da mediana (R$${b.cpl_med.toFixed(0)})`);
+      }
+      if (r.ctr > 0 && b.ctr_med > 0 && r.ctr > b.ctr_med) {
+        oppScore++;
+        oppDiags.push(`CTR ${r.ctr.toFixed(2)}% esta ${Math.round((r.ctr / b.ctr_med - 1) * 100)}% acima da mediana`);
+      }
+      if (r.frequency > 0 && r.frequency < 2.0) {
+        oppScore++;
+        oppDiags.push(`Frequencia ${r.frequency.toFixed(1)} — audiencia nao saturada, espaco para escalar`);
+      }
+      if (r.leads >= 10) {
+        oppScore++;
+        oppDiags.push(`${r.leads} leads gerados — volume consistente`);
+      }
+      if (oppScore >= 2) {
+        severity = "OPORTUNIDADE";
+        oppDiags.push("Candidato a aumento de budget");
+        diags.length = 0;
+        diags.push(...oppDiags);
+      }
     }
     r.severidade = severity;
     r.diagnostico = diags.slice(0, 5).join(" | ");
