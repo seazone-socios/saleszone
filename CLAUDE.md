@@ -253,6 +253,7 @@ Toggle global no header, visivel em todas as abas (exceto Venda). `?filter=paid`
 - Token Meta: `vault_read_secret('META_ACCESS_TOKEN')`
 - Google SA: `vault_read_secret('GOOGLE_SERVICE_ACCOUNT')` — JSON da Service Account Google
 - `vault.create_secret(secret, name, description)` — 1o param e o VALOR, 2o e o NOME
+- **Atualizar secret:** `SELECT vault.update_secret((SELECT id FROM vault.secrets WHERE name = 'NOME'), 'NOVO_VALOR');` — rodar no SQL Editor do Supabase Dashboard. UPDATE direto na tabela `vault.secrets` da permission denied.
 - **CUIDADO Vault + JSON:** ao inserir JSON com `\n` (como private_key da SA), usar `convert_from(decode('BASE64_STRING', 'base64'), 'UTF8')` — single quotes e dollar quoting corrompem as newlines
 - Edge Functions tem limite de ~150MB memoria — por isso os 5 modos separados
 - `tsconfig.json` DEVE excluir `supabase/` (Deno URL imports quebram build Next.js no Vercel)
