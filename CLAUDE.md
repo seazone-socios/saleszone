@@ -55,6 +55,8 @@ src/
       dashboard/ociosidade/route.ts          — Disponibilidade closers (Google Calendar)
       dashboard/presales/route.ts            — Tempo de resposta pre-vendedores
       dashboard/regras-mql/route.ts          — Regras e taxas de qualificacao MQL
+      dashboard/planejamento/route.ts        — Conversao midia paga vs historico
+      dashboard/orcamento/route.ts           — GET/POST orcamento mensal + gasto diario
   components/dashboard/
     header.tsx                               — Navegacao, usuario, botao Atualizar
     acompanhamento-view.tsx                  — Heatmap 28 dias + metas
@@ -65,6 +67,8 @@ src/
     balanceamento-view.tsx                   — Taxas de qualificacao por empreendimento/fonte
     resultados-view.tsx                      — Funil comercial Leads→WON + Reserva/Contrato
     presales-view.tsx                        — Performance pre-vendedores + deals recentes
+    planejamento-view.tsx                    — Metricas atuais vs historicas por empreendimento
+    orcamento-view.tsx                       — Budget mensal editavel, barra progresso, breakdown squad/emp
     ui.tsx                                   — Componentes reutilizaveis
   lib/
     constants.ts                             — Squads, empreendimentos, closers, UI tokens (T)
@@ -79,6 +83,8 @@ supabase/
   functions/
     sync-squad-dashboard/index.ts            — ETL principal Pipedrive → Supabase
     sync-squad-presales/index.ts             — ETL pre-vendas (deals + atividades)
+    sync-baserow-forms/index.ts              — ETL Baserow formularios → Supabase
+    sync-baserow-leads/index.ts              — ETL Baserow leads → Supabase
 ```
 
 ## Tabelas Supabase
@@ -97,11 +103,13 @@ supabase/
 | `nekt_meta26_metas` | Metas mensais WON (fonte externa, campo `data` formato DD/MM/YYYY) |
 | `squad_baserow_empreendimentos` | Regras MQL por empreendimento/campanha (fonte: Baserow). Populada por `sync-baserow-forms`. |
 | `squad_baserow_forms` | Formularios do Baserow (fonte: Baserow). Populada por `sync-baserow-forms`. |
+| `squad_monthly_counts` | Contagens mensais acumuladas por tab x empreendimento (rollup de squad_daily_counts). Populada pelo modo `monthly-rollup`. |
+| `squad_orcamento` | Orcamento mensal global SZI. PK = `mes` (YYYY-MM). Input manual via aba Orcamento. |
 
 ## Edge Functions
 
 ### sync-squad-dashboard
-ETL principal. Roda em 5 modos separados (cada um fica dentro do limite de 150MB de memoria):
+ETL principal. Roda em 6 modos separados (cada um fica dentro do limite de 150MB de memoria):
 
 | Modo | O que faz | Escrita |
 |------|-----------|---------|
@@ -110,6 +118,7 @@ ETL principal. Roda em 5 modos separados (cada um fica dentro do limite de 150MB
 | `daily-lost` | Busca deals perdidos via `/deals?status=lost&stage_id=X` com cutoff 90d | **Substitui** (source=lost) |
 | `alignment` | Deals abertos + `/users` API | Substitui squad_alignment |
 | `metas` | Calculo DB-only (squad_daily_counts + nekt_meta26_metas) | Upsert squad_metas + squad_ratios |
+| `monthly-rollup` | Agrega squad_daily_counts por mes (DB-only) | Upsert squad_monthly_counts |
 
 **Sync Idempotente:** Cada modo usa coluna `source` (open/won/lost) e substitui somente suas proprias rows. PK = `(date, tab, empreendimento, source)`. Rodar qualquer modo multiplas vezes produz o mesmo resultado. API routes somam todos os sources automaticamente.
 
@@ -288,6 +297,18 @@ dados incompletos (so deals abertos). O front mostra banner de warning quando is
 | Pre-Venda | `["presales"]` |
 | Resultados | `["dashboard", "meta-ads"]` |
 | Balanceamento | `["baserow", "meta-ads"]` |
+| Planejamento | `["dashboard", "meta-ads"]` |
+| Orcamento | `["meta-ads"]` |
+
+## Orcamento — Controle de Budget
+- Orcamento global SZI (um valor mensal para todos os squads)
+- Input direto na tela: clicar no card "Orcamento Mensal" para editar
+- Salva em `squad_orcamento` (upsert por `mes`)
+- **Gasto diario**: calculado como `gasto_campanhas_ativas / dias_passados` (media real, NAO daily_budget do Meta API)
+- **Projecao**: se diasPassados >= 3, usa `(gastoAtual / diasPassados) * diasNoMes`; senao usa `gastoDiario * diasNoMes`
+- **Status**: ok (projecao <= 105% orcamento), alerta (<= 115%), critico (> 115%)
+- Breakdown por squad e empreendimento na tabela
+- NAO usa campo `daily_budget` da Meta API (retorna valores inconsistentes) — usa gasto real dividido pelos dias
 
 ## Edge Functions — Auth
 - Edge Functions NAO precisam de verificacao manual de auth (isServiceRole)
