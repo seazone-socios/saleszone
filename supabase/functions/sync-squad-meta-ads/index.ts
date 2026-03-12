@@ -64,7 +64,9 @@ function percentile(data, p) {
 function median(data) {
   return percentile(data, 50);
 }
-async function fetchAllInsights(token, since, until, statuses = ["ACTIVE"]) {
+async function fetchAllInsights(token, since, until, statuses = [
+  "ACTIVE"
+]) {
   const fields = "ad_id,ad_name,adset_name,campaign_name,impressions,clicks,spend,cpc,cpm,ctr,frequency,actions,cost_per_action_type";
   const timeRange = JSON.stringify({
     since,
@@ -174,32 +176,7 @@ Deno.serve(async (req)=>{
   const startTime = Date.now();
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
-    const authHeader = req.headers.get("Authorization");
-    const srKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const rawToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    let isServiceRole = !!srKey && rawToken === srKey;
-    if (!isServiceRole && rawToken) {
-      try {
-        const parts = rawToken.split(".");
-        if (parts.length === 3) {
-          const p = parts[1];
-          const padded = p + "=".repeat((4 - p.length % 4) % 4);
-          isServiceRole = JSON.parse(atob(padded))?.role === "service_role";
-        }
-      } catch  {}
-    }
-    if (!isServiceRole) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "Unauthorized"
-      }), {
-        status: 401,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json"
-        }
-      });
-    }
+    // Auth handled by Supabase gateway (--no-verify-jwt not set)
     const { data: tokenData } = await supabase.rpc("vault_read_secret", {
       secret_name: "META_ACCESS_TOKEN"
     });
@@ -211,26 +188,37 @@ Deno.serve(async (req)=>{
     const sinceLifetime = "2024-06-01";
     const snapshotDate = until;
     console.log(`sync-squad-meta-ads v10: lifetime ${sinceLifetime} to ${until}, month ${sinceMonth} to ${until}`);
-    const PAUSED_STATUSES = ["PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"];
+    const PAUSED_STATUSES = [
+      "PAUSED",
+      "CAMPAIGN_PAUSED",
+      "ADSET_PAUSED"
+    ];
     // 3 chamadas paralelas: ACTIVE lifetime + ACTIVE month + PAUSED month
     const [lifetimeInsights, monthActiveInsights, monthPausedInsights] = await Promise.all([
-      fetchAllInsights(metaToken, sinceLifetime, until, ["ACTIVE"]),
-      fetchAllInsights(metaToken, sinceMonth, until, ["ACTIVE"]),
-      fetchAllInsights(metaToken, sinceMonth, until, PAUSED_STATUSES),
+      fetchAllInsights(metaToken, sinceLifetime, until, [
+        "ACTIVE"
+      ]),
+      fetchAllInsights(metaToken, sinceMonth, until, [
+        "ACTIVE"
+      ]),
+      fetchAllInsights(metaToken, sinceMonth, until, PAUSED_STATUSES)
     ]);
     console.log(`  lifetime(active): ${lifetimeInsights.length}, month(active): ${monthActiveInsights.length}, month(paused): ${monthPausedInsights.length}`);
     // Track paused ad IDs for effective_status column
-    const pausedAdIds = new Set(monthPausedInsights.map((i) => i.ad_id));
+    const pausedAdIds = new Set(monthPausedInsights.map((i)=>i.ad_id));
     // Merge paused ads into lifetime (use month data as their lifetime since they're paused)
-    const activeAdIds = new Set(lifetimeInsights.map((i) => i.ad_id));
-    for (const ins of monthPausedInsights) {
+    const activeAdIds = new Set(lifetimeInsights.map((i)=>i.ad_id));
+    for (const ins of monthPausedInsights){
       if (!activeAdIds.has(ins.ad_id)) {
         lifetimeInsights.push(ins);
         activeAdIds.add(ins.ad_id);
       }
     }
     // Month insights = active + paused
-    const monthInsights = [...monthActiveInsights, ...monthPausedInsights];
+    const monthInsights = [
+      ...monthActiveInsights,
+      ...monthPausedInsights
+    ];
     console.log(`  merged: ${lifetimeInsights.length} lifetime, ${monthInsights.length} month`);
     // Map<ad_id, {spend, leads}> do mês
     const monthMap = new Map();
