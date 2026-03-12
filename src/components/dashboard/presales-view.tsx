@@ -139,7 +139,7 @@ export function PresalesView({ data, loading }: Props) {
           color={totals.pctSub30 >= 70 ? "#16a34a" : totals.pctSub30 >= 40 ? "#d97706" : "#dc2626"}
           bg={totals.pctSub30 >= 70 ? "#dcfce7" : totals.pctSub30 >= 40 ? "#fef3c7" : "#fee2e2"}
         />
-        <SummaryPill label="Pendentes" value={String(totals.dealsPendentes)} color="#dc2626" bg="#fee2e2" />
+        <SummaryPill label="Pendentes" value={`${totals.dealsPendentes} (${totals.totalDeals > 0 ? Math.round((totals.dealsPendentes / totals.totalDeals) * 100) : 0}%)`} color="#dc2626" bg="#fee2e2" />
         <CalcDisclaimer />
       </div>
 
@@ -208,7 +208,12 @@ export function PresalesView({ data, loading }: Props) {
                       ({ps.totalDeals > 0 ? Math.round((ps.dealsComAcao / ps.totalDeals) * 100) : 0}%)
                     </span>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "center", color: pendColor, fontWeight: 600 }}>{ps.dealsPendentes}</td>
+                  <td style={{ ...tdStyle, textAlign: "center", color: pendColor, fontWeight: 600 }}>
+                    {ps.dealsPendentes}
+                    <span style={{ fontSize: "11px", fontWeight: 400, color: T.cinza400, marginLeft: "4px" }}>
+                      ({ps.totalDeals > 0 ? Math.round((ps.dealsPendentes / ps.totalDeals) * 100) : 0}%)
+                    </span>
+                  </td>
                 </tr>
               );
             })}
