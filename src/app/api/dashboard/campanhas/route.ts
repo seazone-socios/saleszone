@@ -33,24 +33,62 @@ export async function GET(req: NextRequest) {
     const monthPrefix = snapshotDate!.substring(0, 7);
     const startDate = `${monthPrefix}-01`;
 
-    // Queries paralelas: Meta Ads + Funil por ad + Contagens agregadas (RPC) + WON cross-empreendimento
-    const [metaRes, funnelRes, countsRes, crossWonRes] = await Promise.all([
+    // Queries paralelas: Meta Ads (último snapshot + todos do mês para max spend) + Funil + Contagens + WON
+    const [metaRes, metaAllRes, funnelRes, countsRes, crossWonRes] = await Promise.all([
       supabase
         .from("squad_meta_ads")
         .select("*")
         .eq("snapshot_date", snapshotDate)
         .order("spend", { ascending: false }),
+      // Todos os snapshots do mês para calcular max spend_month/leads_month por ad
+      supabase
+        .from("squad_meta_ads")
+        .select("ad_id, spend_month, leads_month")
+        .gte("snapshot_date", startDate),
       supabase.rpc("get_ad_funnel_counts", { start_date: startDate }),
       supabase.rpc("get_emp_counts_summary", { p_start_date: startDate }),
       supabase.rpc("get_ad_won_cross_emp"),
     ]);
 
     if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
+    if (metaAllRes.error) console.warn(`Meta all-month query error (non-fatal): ${metaAllRes.error.message}`);
     if (funnelRes.error) console.warn(`Funnel query error (non-fatal): ${funnelRes.error.message}`);
     if (countsRes.error) console.warn(`Counts RPC error (non-fatal): ${countsRes.error.message}`);
     if (crossWonRes.error) console.warn(`Cross-emp WON query error (non-fatal): ${crossWonRes.error.message}`);
 
-    const ads = metaRes.data || [];
+    // Max spend_month/leads_month por ad em todos os snapshots do mês
+    const adMaxSpend = new Map<string, { spend: number; leads: number }>();
+    for (const row of metaAllRes.data || []) {
+      const cur = adMaxSpend.get(row.ad_id);
+      const spend = Number(row.spend_month) || 0;
+      const leads = row.leads_month || 0;
+      if (!cur || spend > cur.spend) {
+        adMaxSpend.set(row.ad_id, { spend, leads: Math.max(leads, cur?.leads || 0) });
+      } else if (cur) {
+        cur.leads = Math.max(cur.leads, leads);
+      }
+    }
+
+    // Aplicar max spend/leads nos ads do snapshot mais recente
+    const ads = (metaRes.data || []).map((ad) => {
+      const maxData = adMaxSpend.get(ad.ad_id);
+      return {
+        ...ad,
+        spend_month: maxData ? maxData.spend : (Number(ad.spend_month) || 0),
+        leads_month: maxData ? maxData.leads : (ad.leads_month || 0),
+      };
+    });
+
+    // Ads que existem em snapshots anteriores mas NÃO no último (foram removidos)
+    // → adicionar com dados mínimos para preservar o gasto do mês
+    const latestAdIds = new Set(ads.map((a) => a.ad_id));
+    for (const [adId, maxData] of adMaxSpend) {
+      if (!latestAdIds.has(adId) && maxData.spend > 0) {
+        // Buscar dados completos do ad no snapshot mais recente onde ele apareceu
+        // Não temos aqui, mas o spend é preservado no total via funil route
+        // Para campanhas, esses ads "desaparecidos" contribuem apenas no total
+      }
+    }
 
     // Maps pré-agregados pela RPC (lifetime + mês)
     const countsMapAll = new Map<string, { mql: number; sql: number; opp: number; won: number }>();
@@ -87,10 +125,17 @@ export async function GET(req: NextRequest) {
       crossWonMap.set(row.ad_id, Number(row.won_other) || 0);
     }
 
-    // Summary global — usar dados do mês
+    // Summary global — usar dados do mês (inclui gasto de ads removidos do último snapshot)
     const totalAds = ads.length;
-    const totalSpend = ads.reduce((s, r) => s + Number(r.spend_month || 0), 0);
-    const totalMetaLeads = ads.reduce((s, r) => s + (r.leads_month || 0), 0);
+    let totalSpend = ads.reduce((s, r) => s + Number(r.spend_month || 0), 0);
+    let totalMetaLeads = ads.reduce((s, r) => s + (r.leads_month || 0), 0);
+    // Somar gasto de ads que desapareceram do último snapshot
+    for (const [adId, maxData] of adMaxSpend) {
+      if (!latestAdIds.has(adId) && maxData.spend > 0) {
+        totalSpend += maxData.spend;
+        totalMetaLeads += maxData.leads;
+      }
+    }
     const criticos = ads.filter((r) => r.severidade === "CRITICO").length;
     const alertas = ads.filter((r) => r.severidade === "ALERTA").length;
 

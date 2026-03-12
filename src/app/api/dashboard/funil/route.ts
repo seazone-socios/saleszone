@@ -78,22 +78,15 @@ export async function GET(req: NextRequest) {
     const month = monthParam || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const startDate = `${month}-01`;
 
-    // Buscar o snapshot mais recente do Meta Ads
-    const { data: latestSnap } = await supabase
-      .from("squad_meta_ads")
-      .select("snapshot_date")
-      .gte("snapshot_date", startDate)
-      .order("snapshot_date", { ascending: false })
-      .limit(1)
-      .single();
-    const latestDate = latestSnap?.snapshot_date || startDate;
+    // Buscar TODOS os snapshots do mês e agregar max por ad
+    // (ads que foram pausados/removidos mantêm o spend acumulado de snapshots anteriores)
 
     // Queries paralelas — usar spend_month/leads_month (dados do mês, não lifetime)
     const [metaRes, countsRes, stageRes] = await Promise.all([
       supabase
         .from("squad_meta_ads")
-        .select("empreendimento, impressions, clicks, leads_month, spend_month")
-        .eq("snapshot_date", latestDate),
+        .select("ad_id, empreendimento, impressions, clicks, leads_month, spend_month")
+        .gte("snapshot_date", startDate),
       supabase
         .from("squad_daily_counts")
         .select("tab, empreendimento, count")
@@ -110,16 +103,29 @@ export async function GET(req: NextRequest) {
     if (countsRes.error) throw new Error(`Daily counts query error: ${countsRes.error.message}`);
     if (stageRes.error) throw new Error(`Stage counts query error: ${stageRes.error.message}`);
 
-    // Agregar Meta Ads por empreendimento (usando dados do mês)
-    const metaMap = new Map<string, { impressions: number; clicks: number; leads: number; spend: number }>();
+    // Agregar Meta Ads: max spend_month/leads_month por ad (preserva gasto de ads removidos)
+    const adMax = new Map<string, { empreendimento: string; impressions: number; clicks: number; leads_month: number; spend_month: number }>();
     for (const row of metaRes.data || []) {
-      const key = row.empreendimento;
-      const cur = metaMap.get(key) || { impressions: 0, clicks: 0, leads: 0, spend: 0 };
-      cur.impressions += row.impressions || 0;
-      cur.clicks += row.clicks || 0;
-      cur.leads += row.leads_month || 0;
-      cur.spend += Number(row.spend_month) || 0;
-      metaMap.set(key, cur);
+      const cur = adMax.get(row.ad_id);
+      if (!cur || (Number(row.spend_month) || 0) > cur.spend_month) {
+        adMax.set(row.ad_id, {
+          empreendimento: row.empreendimento,
+          impressions: row.impressions || 0,
+          clicks: row.clicks || 0,
+          leads_month: row.leads_month || 0,
+          spend_month: Number(row.spend_month) || 0,
+        });
+      }
+    }
+    // Agregar por empreendimento
+    const metaMap = new Map<string, { impressions: number; clicks: number; leads: number; spend: number }>();
+    for (const ad of adMax.values()) {
+      const cur = metaMap.get(ad.empreendimento) || { impressions: 0, clicks: 0, leads: 0, spend: 0 };
+      cur.impressions += ad.impressions;
+      cur.clicks += ad.clicks;
+      cur.leads += ad.leads_month;
+      cur.spend += ad.spend_month;
+      metaMap.set(ad.empreendimento, cur);
     }
 
     // Agregar Pipedrive counts por tab/empreendimento

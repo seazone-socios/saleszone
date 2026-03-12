@@ -40,8 +40,8 @@ export async function GET(req: NextRequest) {
     const metaPromise = paidOnly
       ? supabase
           .from("squad_meta_ads")
-          .select("empreendimento, leads_month, snapshot_date")
-          .order("snapshot_date", { ascending: false })
+          .select("ad_id, empreendimento, leads_month")
+          .gte("snapshot_date", monthStart)
       : null;
 
     const [countsRes, mqlRes, metaRes] = await Promise.all([
@@ -56,17 +56,22 @@ export async function GET(req: NextRequest) {
     // Calcular ratios paid por empreendimento
     let paidRatios: Map<string, number> | null = null;
     if (paidOnly) {
-      // Meta Ads leads por empreendimento (último snapshot)
-      const metaLeads = new Map<string, number>();
+      // Meta Ads leads por empreendimento (max leads_month por ad em todos os snapshots do mês)
+      const adMaxLeads = new Map<string, { empreendimento: string; leads: number }>();
       if (metaRes?.data) {
-        const latestDate = metaRes.data[0]?.snapshot_date;
         for (const row of metaRes.data) {
-          if (row.snapshot_date !== latestDate) break;
-          const cur = metaLeads.get(row.empreendimento) || 0;
-          metaLeads.set(row.empreendimento, cur + (row.leads_month || 0));
+          const cur = adMaxLeads.get(row.ad_id);
+          const leads = row.leads_month || 0;
+          if (!cur || leads > cur.leads) {
+            adMaxLeads.set(row.ad_id, { empreendimento: row.empreendimento, leads });
+          }
         }
       }
-
+      const metaLeads = new Map<string, number>();
+      for (const ad of adMaxLeads.values()) {
+        const cur = metaLeads.get(ad.empreendimento) || 0;
+        metaLeads.set(ad.empreendimento, cur + ad.leads);
+      }
       // MQL totais do mês por empreendimento
       const mqlTotals = new Map<string, number>();
       if (tab === "mql") {
