@@ -90,11 +90,13 @@ supabase/
 | `squad_ratios` | Ratios 90d MQL→SQL→OPP→WON e contagens (1 row por mes) |
 | `squad_calendar_events` | Eventos Google Calendar dos closers |
 | `squad_closer_rules` | Regras dos 15 closers (email, prefixo, setor) |
-| `squad_meta_ads` | Snapshot diario de ads Meta Ads SZI com diagnosticos. Campos `spend`/`leads` sao lifetime; usar `spend_month`/`leads_month` para dados do mes. |
+| `squad_meta_ads` | Snapshot diario de ads Meta Ads SZI com diagnosticos. Campos `spend`/`leads` sao lifetime; usar `spend_month`/`leads_month` para dados do mes. Coluna `effective_status` (ACTIVE/PAUSED). |
 | `squad_alignment_deals` | Deals individuais do alinhamento (deal_id, title, empreendimento, owner_name) para listar desalinhados |
-| `squad_presales_response` | Deals com tempo de resposta dos pre-vendedores (30 dias) |
+| `squad_presales_response` | Deals com tempo de resposta dos pre-vendedores (30 dias). Inclui `last_mia_at`. |
 | `config_pre_vendedores` | Configuracao de pre-vendedores (user_id, user_name, pipeline_id) |
 | `nekt_meta26_metas` | Metas mensais WON (fonte externa, campo `data` formato DD/MM/YYYY) |
+| `squad_baserow_empreendimentos` | Regras MQL por empreendimento/campanha (fonte: Baserow). Populada por `sync-baserow-forms`. |
+| `squad_baserow_forms` | Formularios do Baserow (fonte: Baserow). Populada por `sync-baserow-forms`. |
 
 ## Edge Functions
 
@@ -138,17 +140,26 @@ ETL principal. Roda em 5 modos separados (cada um fica dentro do limite de 150MB
 - **CUIDADO:** filtrar somente ACTIVE faz com que campanhas pausadas no meio do mes sumam do investimento total. Sempre incluir PAUSED no mes.
 - Para Lead Ads usar `onsite_conversion.lead_grouped` (formularios reais). `action_type === "lead"` inclui pixel leads e infla ~3-4x
 - Diagnosticos: CRITICO (CPL >2x mediana, CTR <0.5%, gasto >R$200 sem lead, freq >3.5) / ALERTA (CPL >P75, CTR <P25, CPM >2x mediana)
+- Armazena `effective_status` por ad (ACTIVE ou PAUSED) no banco
 - Loga unmatched_campaigns para detectar novos empreendimentos/aliases
+- **Diagnostico MKT** filtra somente ads ACTIVE — campanhas pausadas nao precisam de diagnostico
 
-### sync-squad-calendar (deploy separado, codigo nao no repo)
+### sync-baserow-forms
+- Busca dados do Baserow (api-baserow.seazone.com.br) e popula `squad_baserow_forms` e `squad_baserow_empreendimentos`
+- Usado pela aba Balanceamento (regras MQL por empreendimento/fonte)
+- Retorna `{ok: true, forms: N, empreendimentos: N}`
+
+### sync-squad-calendar (codigo em `supabase/functions/sync-squad-calendar/index.ts`)
 - Google Service Account com Domain-wide Delegation (scope: calendar.events.readonly)
 - **Service Account:** `conta-do-ambrosi@seazone-bi-windows.iam.gserviceaccount.com` (Client ID: `100525915104498129919`)
 - **Domain-wide Delegation** configurada no Google Workspace Admin Console (Security > API Controls)
 - **Vault secret:** `GOOGLE_SERVICE_ACCOUNT` — JSON da SA armazenado via base64 encode para preservar `\n` da private key
 - Impersona cada closer, sync eventos D-2 a D+7
 - Filtra por prefixo ("Apresentação" para SZI/MKTP/SZS/Expansao/Decor; "Seazone" para Construtoras)
-- Extrai empreendimento do titulo (apos "|") ou da descricao
+- Extrai empreendimento do titulo (apos "|", "&", "<>", ou " - " apos prefixo)
 - Cancelamento: attendee com responseStatus=declined
+- **Deploy:** `supabase functions deploy sync-squad-calendar --no-verify-jwt`
+- **IMPORTANTE:** deployar com `--no-verify-jwt` — sem isso, a funcao rejeita anon key e o botao Atualizar no Vercel falha (Vercel nao tem SUPABASE_SERVICE_ROLE_KEY)
 - **Sync manual alternativo:** comando Claude Code `/agenda-check-supabase` (usa Google Calendar MCP ao inves da SA)
 
 ## pg_cron
@@ -217,7 +228,8 @@ Toggle global no header, visivel em todas as abas (exceto Venda). `?filter=paid`
 - `squad_meta_ads` armazena snapshots diarios **acumulados** (lifetime), NAO deltas diarios
 - Campos `spend` e `leads` sao lifetime; campos `spend_month` e `leads_month` sao do mes corrente
 - SEMPRE usar `spend_month`/`leads_month` para exibir dados do mes (funil, campanhas)
-- Para exibir dados mensais, pegar o **snapshot mais recente** (`eq snapshot_date`) — NUNCA somar snapshots
+- Para `spend_month`/`leads_month`: buscar **TODOS os snapshots do mes** e usar o **max por ad_id** (ads removidos/pausados mantêm o gasto acumulado)
+- Para campos lifetime (impressions, clicks, diagnosticos): usar o **snapshot mais recente** (`eq snapshot_date`)
 - `impressions`, `clicks`, `ctr`, `cpm`, `frequency` ainda sao lifetime (Edge Function nao salva versao mensal)
 - Edge Function faz 2 chamadas: `fetchAllInsights(lifetime)` + `fetchAllInsights(month)` em paralelo
 - **NUNCA filtrar somente `effective_status=ACTIVE`** — campanhas pausadas no meio do mes perdem o gasto acumulado. Buscar PAUSED separadamente (somente month) e combinar
@@ -236,7 +248,7 @@ Toggle global no header, visivel em todas as abas (exceto Venda). `?filter=paid`
 - Pipedrive domain: seazone-fd92b9.pipedrive.com
 
 ## Supabase — Notas
-- Auth: service_role JWT (via Bearer token) para Edge Functions
+- Auth: Edge Functions aceitam anon key (deployadas com `--no-verify-jwt`) — **IMPORTANTE** para funcionar no Vercel que nao tem `SUPABASE_SERVICE_ROLE_KEY`
 - Token Pipedrive: `vault_read_secret('PIPEDRIVE_API_TOKEN')`
 - Token Meta: `vault_read_secret('META_ACCESS_TOKEN')`
 - Google SA: `vault_read_secret('GOOGLE_SERVICE_ACCOUNT')` — JSON da Service Account Google
