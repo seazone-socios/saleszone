@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { T } from "@/lib/constants";
-import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData } from "@/lib/types";
+import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData, MisalignedDealsData } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Header, type MediaFilter } from "@/components/dashboard/header";
 import { AcompanhamentoView } from "@/components/dashboard/acompanhamento-view";
@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [acompData, setAcompData] = useState<Record<string, AcompanhamentoData>>({});
   const [alinhData, setAlinhData] = useState<AlinhamentoData | null>(null);
+  const [misalignedDeals, setMisalignedDeals] = useState<MisalignedDealsData | null>(null);
   const [campData, setCampData] = useState<CampanhasData | null>(null);
   const [balancData, setBalancData] = useState<RegrasMqlData | null>(null);
   const [ocioData, setOcioData] = useState<OciosidadeData | null>(null);
@@ -67,9 +68,12 @@ export default function Dashboard() {
   const fetchAlinh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/dashboard/alinhamento");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setAlinhData(await res.json());
+      const [alinhRes, dealsRes] = await Promise.all([
+        fetch("/api/dashboard/alinhamento"),
+        fetch("/api/dashboard/alinhamento/deals"),
+      ]);
+      if (alinhRes.ok) setAlinhData(await alinhRes.json());
+      if (dealsRes.ok) setMisalignedDeals(await dealsRes.json());
     } catch (err) {
       console.error("Fetch alinh error:", err);
     } finally {
@@ -265,7 +269,7 @@ export default function Dashboard() {
             loading={loading}
           />
         )}
-        {mainView === "alinhamento" && <AlinhamentoView data={alinhData} loading={loading} />}
+        {mainView === "alinhamento" && <AlinhamentoView data={alinhData} misalignedDeals={misalignedDeals} loading={loading} />}
         {mainView === "ociosidade" && <OciosidadeView data={ocioData} loading={loading} />}
         {mainView === "balanceamento" && <BalanceamentoView data={balancData} ocioData={ocioData} loading={loading} />}
         {mainView === "campanhas" && <CampanhasView data={campData} loading={loading} />}

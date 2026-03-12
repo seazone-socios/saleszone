@@ -47,6 +47,22 @@ export interface AlinhamentoData {
   stats: { total: number; ok: number; mis: number };
 }
 
+export interface MisalignedDeal {
+  deal_id: number;
+  title: string;
+  empreendimento: string;
+  owner_name: string;
+  link: string;
+}
+
+export interface MisalignedDealsData {
+  byPerson: Array<{
+    person: string;
+    role: "pv" | "v";
+    deals: MisalignedDeal[];
+  }>;
+}
+
 export interface MetasData {
   squads: Array<{
     id: number;

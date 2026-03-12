@@ -295,6 +295,7 @@ async function syncAlignment(apiToken: string, supabase: any) {
   const usersRes = await pipedriveGet(apiToken, "/users");
   const userMap = new Map(usersRes.data.map((u: any) => [u.id, u.name]));
   const counts = new Map<string, number>();
+  const dealRows: Array<{deal_id: number; title: string; empreendimento: string; owner_name: string; synced_at: string}> = [];
   for (const deal of deals) {
     const emp = getEmpreendimento(deal);
     if (!emp) continue;
@@ -304,7 +305,16 @@ async function syncAlignment(apiToken: string, supabase: any) {
     const ownerName = userMap.get(ownerId) || String(ownerId);
     const key = `${emp}|${ownerName}`;
     counts.set(key, (counts.get(key) || 0) + 1);
+    dealRows.push({
+      deal_id: deal.id,
+      title: deal.title || `Deal #${deal.id}`,
+      empreendimento: emp,
+      owner_name: ownerName,
+      synced_at: new Date().toISOString(),
+    });
   }
+
+  // Write aggregated counts
   await supabase.from("squad_alignment").delete().neq("empreendimento", "");
   const rows = Array.from(counts.entries()).map(([key, count]) => {
     const [empreendimento, owner_name] = key.split("|");
@@ -317,7 +327,18 @@ async function syncAlignment(apiToken: string, supabase: any) {
       if (error) console.error("Alignment insert error:", error.message);
     }
   }
-  console.log(`syncAlignment: ${rows.length} rows (${deals.length} deals)`);
+
+  // Write individual deal records
+  await supabase.from("squad_alignment_deals").delete().neq("empreendimento", "");
+  if (dealRows.length > 0) {
+    for (let i = 0; i < dealRows.length; i += 500) {
+      const batch = dealRows.slice(i, i + 500);
+      const { error } = await supabase.from("squad_alignment_deals").insert(batch);
+      if (error) console.error("Alignment deals insert error:", error.message);
+    }
+  }
+
+  console.log(`syncAlignment: ${rows.length} rows, ${dealRows.length} deals (${deals.length} total)`);
   return rows.length;
 }
 
