@@ -1,9 +1,8 @@
 "use client";
 
-import { T, SQUAD_COLORS, PV_COLS, V_COLS, SQUAD_V_MAP } from "@/lib/constants";
+import { T, SQUAD_COLORS, PV_COLS, V_COLS, SQUAD_V_MAP, SQUADS } from "@/lib/constants";
 import type { AlinhamentoData, MisalignedDealsData } from "@/lib/types";
 import { StatPill, tdStyle, thBaseStyle } from "./ui";
-import { ExternalLink } from "lucide-react";
 
 interface Props {
   data: AlinhamentoData | null;
@@ -226,87 +225,124 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
         </span>
       </div>
 
-      {/* Misaligned deals by person */}
-      {personDeals.length > 0 && (
-        <div style={{ marginTop: "24px" }}>
-          <h3 style={{ fontSize: "14px", fontWeight: 600, color: T.fg, marginBottom: "12px" }}>
-            Deals Desalinhados por Pessoa
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {personDeals.map((pd) => (
-              <details
-                key={pd.person}
-                style={{
-                  backgroundColor: T.card,
-                  borderRadius: "8px",
-                  border: `1px solid ${T.destructive}33`,
-                  overflow: "hidden",
-                }}
-              >
-                <summary
-                  style={{
-                    padding: "10px 16px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    color: T.fg,
-                    backgroundColor: T.vermelho50,
-                  }}
-                >
-                  <span style={{ color: T.destructive, fontWeight: 700 }}>{pd.deals.length}</span>
-                  <span>{pd.person}</span>
-                  <span style={{ fontSize: "11px", color: T.cinza400 }}>
-                    ({pd.role === "pv" ? "Pré-Venda" : "Venda"})
-                  </span>
-                </summary>
-                <div style={{ padding: "8px 16px 12px" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                    <thead>
-                      <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                        <th style={{ textAlign: "left", padding: "4px 8px", color: T.cinza600, fontWeight: 600 }}>
-                          Empreendimento
-                        </th>
-                        <th style={{ textAlign: "left", padding: "4px 8px", color: T.cinza600, fontWeight: 600 }}>
-                          Deal
-                        </th>
-                        <th style={{ textAlign: "center", padding: "4px 8px", color: T.cinza600, fontWeight: 600, width: "40px" }}>
-                          Link
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pd.deals.map((d) => (
-                        <tr
-                          key={d.deal_id}
-                          style={{ borderBottom: `1px solid ${T.border}` }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.cinza50)}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+      {/* Misaligned deals by squad → person */}
+      {personDeals.length > 0 && (() => {
+        // Map person → squad
+        const personToSquad = new Map<string, number>();
+        for (const sq of SQUADS) {
+          const pvIdx = PV_COLS.indexOf(sq.preVenda);
+          if (pvIdx >= 0) personToSquad.set(sq.preVenda, sq.id);
+          const vIndices = SQUAD_V_MAP[sq.id] || [];
+          for (const vi of vIndices) personToSquad.set(V_COLS[vi], sq.id);
+        }
+
+        // Group personDeals by squad
+        const bySquad = new Map<number, typeof personDeals>();
+        for (const pd of personDeals) {
+          const sqId = personToSquad.get(pd.person) ?? 0;
+          if (!bySquad.has(sqId)) bySquad.set(sqId, []);
+          bySquad.get(sqId)!.push(pd);
+        }
+
+        const squadIds = Array.from(bySquad.keys()).sort((a, b) => a - b);
+
+        return (
+          <div style={{ marginTop: "24px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, color: T.fg, marginBottom: "12px" }}>
+              Deals Desalinhados por Squad
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {squadIds.map((sqId) => {
+                const sqColor = SQUAD_COLORS[sqId] || T.cinza600;
+                const sqName = SQUADS.find((s) => s.id === sqId)?.name || `Squad ${sqId}`;
+                const people = bySquad.get(sqId)!;
+                const totalDeals = people.reduce((sum, pd) => sum + pd.deals.length, 0);
+
+                return (
+                  <div key={sqId}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <span style={{ width: "4px", height: "16px", borderRadius: "2px", backgroundColor: sqColor }} />
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: T.fg }}>{sqName}</span>
+                      <span style={{ fontSize: "11px", color: T.cinza400 }}>({totalDeals} deals)</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginLeft: "12px" }}>
+                      {people.map((pd) => (
+                        <details
+                          key={pd.person}
+                          style={{
+                            backgroundColor: T.card,
+                            borderRadius: "8px",
+                            border: `1px solid ${T.destructive}33`,
+                            overflow: "hidden",
+                          }}
                         >
-                          <td style={{ padding: "4px 8px", color: T.cinza700 }}>{d.empreendimento}</td>
-                          <td style={{ padding: "4px 8px", color: T.cardFg }}>{d.title}</td>
-                          <td style={{ padding: "4px 8px", textAlign: "center" }}>
-                            <a
-                              href={d.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: T.primary, display: "inline-flex" }}
-                            >
-                              <ExternalLink size={13} />
-                            </a>
-                          </td>
-                        </tr>
+                          <summary
+                            style={{
+                              padding: "10px 16px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              fontSize: "13px",
+                              fontWeight: 500,
+                              color: T.fg,
+                              backgroundColor: T.vermelho50,
+                            }}
+                          >
+                            <span style={{ color: T.destructive, fontWeight: 700 }}>{pd.deals.length}</span>
+                            <span>{pd.person}</span>
+                            <span style={{ fontSize: "11px", color: T.cinza400 }}>
+                              ({pd.role === "pv" ? "Pré-Venda" : "Venda"})
+                            </span>
+                          </summary>
+                          <div style={{ padding: "8px 16px 12px" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                              <thead>
+                                <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                                  <th style={{ textAlign: "left", padding: "4px 8px", color: T.cinza600, fontWeight: 600 }}>
+                                    Empreendimento
+                                  </th>
+                                  <th style={{ textAlign: "left", padding: "4px 8px", color: T.cinza600, fontWeight: 600 }}>
+                                    Deal
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pd.deals.map((d) => (
+                                  <tr
+                                    key={d.deal_id}
+                                    style={{ borderBottom: `1px solid ${T.border}` }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.cinza50)}
+                                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                                  >
+                                    <td style={{ padding: "4px 8px", color: T.cinza700 }}>{d.empreendimento}</td>
+                                    <td style={{ padding: "4px 8px" }}>
+                                      <a
+                                        href={d.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ color: T.primary, textDecoration: "none", fontWeight: 500 }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                                      >
+                                        {d.title}
+                                      </a>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }
