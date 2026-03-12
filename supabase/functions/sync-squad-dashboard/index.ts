@@ -406,26 +406,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Auth check
-    const authHeader = req.headers.get("Authorization");
-    const srKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const rawToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    let isServiceRole = !!srKey && rawToken === srKey;
-    if (!isServiceRole && rawToken) {
-      try {
-        const parts = rawToken.split(".");
-        if (parts.length === 3) {
-          const p = parts[1];
-          const padded = p + "=".repeat((4 - p.length % 4) % 4);
-          isServiceRole = JSON.parse(atob(padded))?.role === "service_role";
-        }
-      } catch {}
-    }
-    if (!isServiceRole) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Auth handled by Supabase gateway (--no-verify-jwt not set)
 
     // Get Pipedrive token from Vault
     const { data: tokenData } = await supabase.rpc("vault_read_secret", { secret_name: "PIPEDRIVE_API_TOKEN" });
