@@ -397,6 +397,339 @@ async function syncMetas(supabase: any) {
   return { squadMetas: metaRows.length, ratios };
 }
 
+// ---- Mode: backfill-monthly-* (Pipedrive → squad_monthly_counts, 12 months) ----
+// Split into 3 separate calls to stay within 150MB memory:
+//   backfill-monthly-clear  → empties table
+//   backfill-monthly-open   → open deals (pipeline endpoint)
+//   backfill-monthly-won    → won deals (stage_id loop)
+//   backfill-monthly-lost   → lost deals (stage_id loop with cutoff)
+// Uses RPC add_monthly_counts for additive upsert (count += new).
+
+async function backfillMonthlyClear(supabase: any) {
+  const { error } = await supabase.from("squad_monthly_counts").delete().neq("month", "");
+  if (error) throw new Error(`Clear error: ${error.message}`);
+  console.log("backfill-monthly-clear: table emptied");
+  return { cleared: true };
+}
+
+// Stage order for stage-based counting (Planejamento)
+const STAGE_ORDER: Record<number, number> = {
+  392: 1,  // FUP Parceiro
+  184: 2,  // Lead in
+  186: 3,  // Contatados
+  338: 4,  // Qualificação
+  346: 5,  // Qualificado
+  339: 6,  // Aguardando data
+  187: 7,  // Agendado
+  340: 8,  // No Show/Em reagendamento
+  208: 9,  // Reunião Realizada/OPP
+  312: 10, // FUP
+  313: 11, // Negociação
+  311: 12, // Fila de espera
+  191: 13, // Reservas
+  192: 14, // Contrato
+};
+const MQL_MIN_ORDER = 2;  // Lead in
+const SQL_MIN_ORDER = 5;  // Qualificado (NOT Qualificação)
+const OPP_MIN_ORDER = 9;  // Reunião Realizada/OPP
+
+// ---- Flow API: find max stage a deal ever reached ----
+async function getMaxStageReached(apiToken: string, dealId: number, currentOrder: number): Promise<number> {
+  if (currentOrder >= OPP_MIN_ORDER) return currentOrder; // Already at OPP+, skip flow
+  let max = currentOrder;
+  let s = 0;
+  try {
+    while (true) {
+      const res = await pipedriveGet(apiToken, `/deals/${dealId}/flow`, { limit: "100", start: String(s) });
+      if (!res.data) break;
+      for (const e of res.data) {
+        if (e.object === "dealChange" && e.data?.field_key === "stage_id") {
+          for (const v of [e.data.old_value, e.data.new_value]) {
+            const order = STAGE_ORDER[parseInt(v)] || 0;
+            if (order > max) max = order;
+          }
+        }
+      }
+      if (max >= OPP_MIN_ORDER) break; // Found OPP+, early exit
+      if (!res.additional_data?.pagination?.more_items_in_collection) break;
+      s += 100;
+    }
+  } catch (err) { console.error(`flow error deal ${dealId}:`, err); }
+  return max;
+}
+
+// Count deal into monthly map based on max stage reached
+function countDealByStage(deal: any, maxOrder: number, monthly: Map<string, number>, startDate: string, endDate: string) {
+  const addTime = deal.add_time;
+  if (!addTime) return;
+  const day = addTime.substring(0, 10);
+  if (day < startDate || day > endDate) return;
+  const emp = getEmpreendimento(deal);
+  if (!emp) return;
+  const month = day.substring(0, 7);
+
+  if (maxOrder >= MQL_MIN_ORDER) {
+    monthly.set(`${month}|${emp}|mql`, (monthly.get(`${month}|${emp}|mql`) || 0) + 1);
+  }
+  if (maxOrder >= SQL_MIN_ORDER) {
+    monthly.set(`${month}|${emp}|sql`, (monthly.get(`${month}|${emp}|sql`) || 0) + 1);
+  }
+  if (maxOrder >= OPP_MIN_ORDER) {
+    monthly.set(`${month}|${emp}|opp`, (monthly.get(`${month}|${emp}|opp`) || 0) + 1);
+  }
+  if (deal.status === "won") {
+    monthly.set(`${month}|${emp}|won`, (monthly.get(`${month}|${emp}|won`) || 0) + 1);
+  }
+}
+
+// ---- Backfill open+won deals (stage_id based, no flow needed) ----
+async function backfillOpenWon(apiToken: string, supabase: any) {
+  const now = new Date();
+  const endDate = now.toISOString().substring(0, 10);
+  const start365 = new Date(now); start365.setDate(start365.getDate() - 365);
+  const startDate = start365.toISOString().substring(0, 10);
+  console.log(`backfillOpenWon: ${startDate} → ${endDate}`);
+
+  const monthly = new Map<string, number>();
+  let totalOpen = 0, totalWon = 0;
+
+  // Open deals — stage_id is reliable for active deals (forward progression)
+  let s = 0;
+  while (true) {
+    const res = await pipedriveGet(apiToken, `/pipelines/${PIPELINE_ID}/deals`, { limit: "500", start: String(s) });
+    if (!res.data || res.data.length === 0) break;
+    for (const deal of res.data) {
+      if (deal.pipeline_id !== PIPELINE_ID) continue;
+      if (!isMarketingDeal(deal)) continue;
+      if (!getEmpreendimento(deal)) continue;
+      totalOpen++;
+      const currentOrder = STAGE_ORDER[deal.stage_id] || 0;
+      countDealByStage(deal, currentOrder, monthly, startDate, endDate);
+    }
+    if (!res.additional_data?.pagination?.more_items_in_collection) break;
+    s += 500;
+  }
+
+  // Won deals — all at Contrato (order 14), no flow needed
+  const seenWon = new Set<number>();
+  for (const stageId of PIPELINE_STAGES) {
+    let ws = 0;
+    while (true) {
+      const res = await pipedriveGet(apiToken, "/deals", {
+        status: "won", stage_id: String(stageId), sort: "add_time DESC", limit: "500", start: String(ws),
+      });
+      if (!res.data || res.data.length === 0) break;
+      for (const deal of res.data) {
+        if (seenWon.has(deal.id)) continue;
+        seenWon.add(deal.id);
+        if (deal.pipeline_id !== PIPELINE_ID) continue;
+        if (!isMarketingDeal(deal)) continue;
+        if (!getEmpreendimento(deal)) continue;
+        totalWon++;
+        countDealByStage(deal, 14, monthly, startDate, endDate); // Won = passed all stages
+      }
+      if (!res.additional_data?.pagination?.more_items_in_collection) break;
+      ws += 500;
+    }
+  }
+
+  // Upsert (additive)
+  const rows = Array.from(monthly.entries()).map(([key, count]) => {
+    const [month, empreendimento, tab] = key.split("|");
+    return { month, empreendimento, tab, count };
+  });
+  if (rows.length > 0) {
+    for (let i = 0; i < rows.length; i += 200) {
+      const batch = rows.slice(i, i + 200);
+      const { error } = await supabase.rpc("add_monthly_counts", { rows: batch });
+      if (error) console.error(`backfillOpenWon RPC error:`, error.message);
+    }
+  }
+
+  console.log(`backfillOpenWon: open=${totalOpen} won=${totalWon} rows=${rows.length}`);
+  return { totalOpen, totalWon, monthlyRows: rows.length };
+}
+
+// ---- Backfill lost deals with flow API (batched, parallel flow calls) ----
+async function backfillLostWithFlow(apiToken: string, supabase: any, startFrom: number = 0) {
+  const now = new Date();
+  const endDate = now.toISOString().substring(0, 10);
+  const start365 = new Date(now); start365.setDate(start365.getDate() - 365);
+  const startDate = start365.toISOString().substring(0, 10);
+  const BATCH_LIMIT = 5000; // API-returned deals per invocation
+  const FLOW_CONCURRENCY = 10; // parallel flow API calls
+
+  console.log(`backfillLostWithFlow(start=${startFrom}): ${startDate} → ${endDate}`);
+
+  const monthly = new Map<string, number>();
+  const seenDealIds = new Set<number>();
+  let mktDeals = 0, flowCalls = 0;
+  let apiStart = startFrom;
+  let dealsScanned = 0;
+  let reachedEnd = false;
+  let reachedCutoff = false;
+
+  while (dealsScanned < BATCH_LIMIT) {
+    const res = await pipedriveGet(apiToken, "/deals", {
+      status: "lost", sort: "add_time DESC", limit: "500", start: String(apiStart),
+    });
+    if (!res.data || res.data.length === 0) { reachedEnd = true; break; }
+
+    // Collect marketing deals that need flow
+    const dealsNeedingFlow: { deal: any; currentOrder: number }[] = [];
+    for (const deal of res.data) {
+      if (seenDealIds.has(deal.id)) continue;
+      seenDealIds.add(deal.id);
+      dealsScanned++;
+      if (deal.pipeline_id !== PIPELINE_ID) continue;
+      if (!isMarketingDeal(deal)) continue;
+      if (!getEmpreendimento(deal)) continue;
+      const addTime = deal.add_time;
+      if (!addTime) continue;
+      const day = addTime.substring(0, 10);
+      if (day < startDate || day > endDate) continue;
+      mktDeals++;
+      const currentOrder = STAGE_ORDER[deal.stage_id] || 0;
+      dealsNeedingFlow.push({ deal, currentOrder });
+    }
+
+    // Fetch flows in parallel batches
+    for (let i = 0; i < dealsNeedingFlow.length; i += FLOW_CONCURRENCY) {
+      const chunk = dealsNeedingFlow.slice(i, i + FLOW_CONCURRENCY);
+      const results = await Promise.all(
+        chunk.map(({ deal, currentOrder }) => getMaxStageReached(apiToken, deal.id, currentOrder))
+      );
+      flowCalls += chunk.length;
+      for (let j = 0; j < chunk.length; j++) {
+        countDealByStage(chunk[j].deal, results[j], monthly, startDate, endDate);
+      }
+    }
+
+    // Cutoff: stop when deals are older than our window
+    const oldest = res.data[res.data.length - 1]?.add_time?.substring(0, 10) || "";
+    if (oldest && oldest < startDate) { reachedCutoff = true; break; }
+    if (!res.additional_data?.pagination?.more_items_in_collection) { reachedEnd = true; break; }
+    apiStart += 500;
+  }
+
+  // Upsert (additive)
+  const rows = Array.from(monthly.entries()).map(([key, count]) => {
+    const [month, empreendimento, tab] = key.split("|");
+    return { month, empreendimento, tab, count };
+  });
+  if (rows.length > 0) {
+    for (let i = 0; i < rows.length; i += 200) {
+      const batch = rows.slice(i, i + 200);
+      const { error } = await supabase.rpc("add_monthly_counts", { rows: batch });
+      if (error) console.error(`backfillLost RPC error:`, error.message);
+    }
+  }
+
+  const done = reachedEnd || reachedCutoff;
+  const nextStart = done ? null : apiStart;
+  console.log(`backfillLostWithFlow: scanned=${dealsScanned} mkt=${mktDeals} flow=${flowCalls} rows=${rows.length} done=${done}`);
+  return { dealsScanned, mktDeals, flowCalls, monthlyRows: rows.length, nextStart, done };
+}
+
+// ---- Mode: monthly-rollup (stage-based counting from Pipedrive for current + prev month) ----
+async function syncMonthlyRollup(apiToken: string, supabase: any) {
+  const now = new Date();
+  const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+  const startDate = `${prevMonth}-01`;
+  const endDate = now.toISOString().substring(0, 10);
+
+  console.log(`syncMonthlyRollup (stage-based): ${startDate} → ${endDate}`);
+
+  const monthly = new Map<string, number>();
+
+  function countDeal(deal: any) {
+    if (deal.pipeline_id !== PIPELINE_ID) return;
+    if (!isMarketingDeal(deal)) return;
+    const emp = getEmpreendimento(deal);
+    if (!emp) return;
+    const addTime = deal.add_time;
+    if (!addTime) return;
+    const day = addTime.substring(0, 10);
+    if (day < startDate || day > endDate) return;
+    const month = day.substring(0, 7);
+    const stageOrder = STAGE_ORDER[deal.stage_id] || 0;
+    const hasQualDate = !!deal[FIELD_QUALIFICACAO];
+    const hasReunDate = !!deal[FIELD_REUNIAO];
+
+    monthly.set(`${month}|${emp}|mql`, (monthly.get(`${month}|${emp}|mql`) || 0) + 1);
+    if (stageOrder >= SQL_MIN_ORDER || hasQualDate) {
+      monthly.set(`${month}|${emp}|sql`, (monthly.get(`${month}|${emp}|sql`) || 0) + 1);
+    }
+    if (stageOrder >= OPP_MIN_ORDER || hasReunDate) {
+      monthly.set(`${month}|${emp}|opp`, (monthly.get(`${month}|${emp}|opp`) || 0) + 1);
+    }
+    if (deal.status === "won") {
+      monthly.set(`${month}|${emp}|won`, (monthly.get(`${month}|${emp}|won`) || 0) + 1);
+    }
+  }
+
+  // Scan open deals
+  let totalDeals = 0;
+  let start = 0;
+  while (true) {
+    const res = await pipedriveGet(apiToken, `/pipelines/${PIPELINE_ID}/deals`, {
+      limit: "500", start: String(start),
+    });
+    if (!res.data || res.data.length === 0) break;
+    totalDeals += res.data.length;
+    for (const deal of res.data) countDeal(deal);
+    if (!res.additional_data?.pagination?.more_items_in_collection) break;
+    start += 500;
+  }
+
+  // Scan won + lost deals (deduped)
+  const seenDealIds = new Set<number>();
+  for (const dealStatus of ["won", "lost"] as const) {
+    for (const stageId of PIPELINE_STAGES) {
+      let s = 0;
+      let stoppedEarly = false;
+      while (true) {
+        const res = await pipedriveGet(apiToken, "/deals", {
+          status: dealStatus, stage_id: String(stageId),
+          sort: "add_time DESC", limit: "500", start: String(s),
+        });
+        if (!res.data || res.data.length === 0) break;
+        for (const deal of res.data) {
+          if (seenDealIds.has(deal.id)) continue;
+          seenDealIds.add(deal.id);
+          countDeal(deal);
+        }
+        if (dealStatus === "lost") {
+          const oldest = res.data[res.data.length - 1]?.add_time?.substring(0, 10) || "";
+          if (oldest && oldest < startDate) { stoppedEarly = true; break; }
+        }
+        if (!res.additional_data?.pagination?.more_items_in_collection) break;
+        s += 500;
+      }
+      if (dealStatus === "lost" && stoppedEarly) break;
+    }
+  }
+  totalDeals += seenDealIds.size;
+
+  // Upsert (replace) for current + prev month
+  const rows = Array.from(monthly.entries()).map(([key, count]) => {
+    const [month, empreendimento, tab] = key.split("|");
+    return { month, empreendimento, tab, count, synced_at: new Date().toISOString() };
+  });
+
+  if (rows.length > 0) {
+    const { error: upsertErr } = await supabase
+      .from("squad_monthly_counts")
+      .upsert(rows, { onConflict: "month,empreendimento,tab" });
+    if (upsertErr) console.error(`monthly-rollup upsert error:`, upsertErr.message);
+  }
+
+  console.log(`syncMonthlyRollup: ${totalDeals} deals → ${rows.length} monthly rows`);
+  return { months: [prevMonth, curMonth], totalDeals, totalRows: rows.length };
+}
+
 // ---- Handler ----
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -415,8 +748,9 @@ Deno.serve(async (req) => {
 
     // Parse mode
     let mode = "daily-open";
+    let body: any = {};
     try {
-      const body = await req.json();
+      body = await req.json();
       if (body?.mode) mode = body.mode;
     } catch {}
     console.log(`sync-squad-dashboard mode=${mode}`);
@@ -441,6 +775,101 @@ Deno.serve(async (req) => {
       case "metas":
         result = await syncMetas(supabase);
         break;
+      case "monthly-rollup":
+        result = await syncMonthlyRollup(apiToken, supabase);
+        break;
+      case "backfill-monthly-clear":
+        result = await backfillMonthlyClear(supabase);
+        break;
+      case "backfill-open-won":
+        result = await backfillOpenWon(apiToken, supabase);
+        break;
+      case "backfill-lost-flows": {
+        const startFrom = body?.start || 0;
+        result = await backfillLostWithFlow(apiToken, supabase, startFrom);
+        break;
+      }
+      case "debug-stages": {
+        // Debug: scan a sample of deals and report stage_id distribution
+        const stageDistOpen: Record<string, number> = {};
+        const stageDistWon: Record<string, number> = {};
+        const stageDistLost: Record<string, number> = {};
+        let sampleOpen = 0, sampleWon = 0, sampleLost = 0;
+        let mktOpen = 0, mktWon = 0, mktLost = 0;
+
+        // Open deals
+        let s = 0;
+        while (true) {
+          const res = await pipedriveGet(apiToken, `/pipelines/${PIPELINE_ID}/deals`, { limit: "500", start: String(s) });
+          if (!res.data || res.data.length === 0) break;
+          for (const d of res.data) {
+            if (d.pipeline_id !== PIPELINE_ID) continue;
+            sampleOpen++;
+            if (isMarketingDeal(d) && getEmpreendimento(d)) {
+              mktOpen++;
+              const sid = String(d.stage_id);
+              stageDistOpen[sid] = (stageDistOpen[sid] || 0) + 1;
+            }
+          }
+          if (!res.additional_data?.pagination?.more_items_in_collection) break;
+          s += 500;
+        }
+
+        // Won deals (first 2000)
+        const seenW = new Set<number>();
+        for (const stageId of PIPELINE_STAGES) {
+          let ws = 0;
+          while (true) {
+            const res = await pipedriveGet(apiToken, "/deals", { status: "won", stage_id: String(stageId), sort: "add_time DESC", limit: "500", start: String(ws) });
+            if (!res.data || res.data.length === 0) break;
+            for (const d of res.data) {
+              if (seenW.has(d.id)) continue;
+              seenW.add(d.id);
+              if (d.pipeline_id !== PIPELINE_ID) continue;
+              sampleWon++;
+              if (isMarketingDeal(d) && getEmpreendimento(d)) {
+                mktWon++;
+                const sid = String(d.stage_id);
+                stageDistWon[sid] = (stageDistWon[sid] || 0) + 1;
+              }
+            }
+            if (!res.additional_data?.pagination?.more_items_in_collection) break;
+            ws += 500;
+          }
+        }
+
+        // Lost deals (first 5000, sorted by add_time DESC)
+        const seenL = new Set<number>();
+        for (const stageId of PIPELINE_STAGES) {
+          let ls = 0;
+          while (true) {
+            const res = await pipedriveGet(apiToken, "/deals", { status: "lost", stage_id: String(stageId), sort: "add_time DESC", limit: "500", start: String(ls) });
+            if (!res.data || res.data.length === 0) break;
+            for (const d of res.data) {
+              if (seenL.has(d.id)) continue;
+              seenL.add(d.id);
+              if (d.pipeline_id !== PIPELINE_ID) continue;
+              sampleLost++;
+              if (isMarketingDeal(d) && getEmpreendimento(d)) {
+                mktLost++;
+                const sid = String(d.stage_id);
+                stageDistLost[sid] = (stageDistLost[sid] || 0) + 1;
+              }
+            }
+            if (seenL.size >= 5000) break;
+            if (!res.additional_data?.pagination?.more_items_in_collection) break;
+            ls += 500;
+          }
+          if (seenL.size >= 5000) break;
+        }
+
+        result = {
+          open: { total: sampleOpen, marketing: mktOpen, stages: stageDistOpen },
+          won: { total: sampleWon, marketing: mktWon, stages: stageDistWon },
+          lost: { total: sampleLost, marketing: mktLost, stages: stageDistLost },
+        };
+        break;
+      }
       case "all": {
         // Full sync: open + won + alignment + metas (lost runs separately due to volume)
         const daily = await syncDailyOpen(apiToken, supabase);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer, ShoppingCart, Activity, LogOut, TrendingUp } from "lucide-react";
+import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer, ShoppingCart, Activity, LogOut, TrendingUp, Target, Wallet } from "lucide-react";
 import { T } from "@/lib/constants";
 import { pillBtnStyle, pillBtnPrimaryStyle, viewBtnStyle } from "./ui";
 
@@ -148,6 +148,26 @@ export function Header({ mainView, setMainView, onRefresh, loading, lastUpdated,
           }}
         >
           <ShoppingCart size={12} /> Venda
+        </button>
+        <button
+          onClick={() => setMainView("orcamento")}
+          style={{
+            ...viewBtnStyle,
+            backgroundColor: mainView === "orcamento" ? T.fg : "transparent",
+            color: mainView === "orcamento" ? "#FFF" : T.cinza600,
+          }}
+        >
+          <Wallet size={12} /> Orçamento
+        </button>
+        <button
+          onClick={() => setMainView("planejamento")}
+          style={{
+            ...viewBtnStyle,
+            backgroundColor: mainView === "planejamento" ? T.fg : "transparent",
+            color: mainView === "planejamento" ? "#FFF" : T.cinza600,
+          }}
+        >
+          <Target size={12} /> Planejamento
         </button>
       </div>
       {showMediaFilter && (

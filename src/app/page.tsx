@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { T } from "@/lib/constants";
-import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData, MisalignedDealsData } from "@/lib/types";
+import type { TabKey, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData, MisalignedDealsData, PlanejamentoData, OrcamentoData } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Header, type MediaFilter } from "@/components/dashboard/header";
 import { AcompanhamentoView } from "@/components/dashboard/acompanhamento-view";
@@ -14,6 +14,8 @@ import { DiagnosticoMktView } from "@/components/dashboard/diagnostico-mkt-view"
 import { OciosidadeView } from "@/components/dashboard/ociosidade-view";
 import { PresalesView } from "@/components/dashboard/presales-view";
 import { ResultadosView } from "@/components/dashboard/resultados-view";
+import { PlanejamentoView } from "@/components/dashboard/planejamento-view";
+import { OrcamentoView } from "@/components/dashboard/orcamento-view";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -30,6 +32,8 @@ export default function Dashboard() {
   const [ocioData, setOcioData] = useState<OciosidadeData | null>(null);
   const [presalesData, setPresalesData] = useState<PresalesData | null>(null);
   const [funilData, setFunilData] = useState<FunilData | null>(null);
+  const [planejData, setPlanejData] = useState<PlanejamentoData | null>(null);
+  const [orcData, setOrcData] = useState<OrcamentoData | null>(null);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
 
@@ -149,6 +153,47 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchPlanej = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/planejamento");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPlanejData(await res.json());
+    } catch (err) {
+      console.error("Fetch planej error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchOrc = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/orcamento");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setOrcData(await res.json());
+    } catch (err) {
+      console.error("Fetch orc error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleBudgetSave = useCallback(async (value: number) => {
+    const now = new Date();
+    const mes = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    try {
+      await fetch("/api/dashboard/orcamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mes, orcamentoTotal: value }),
+      });
+      fetchOrc();
+    } catch (err) {
+      console.error("Save budget error:", err);
+    }
+  }, [fetchOrc]);
+
   // Re-fetch when mediaFilter changes — impacts all data views
   useEffect(() => {
     // Clear cached acompanhamento data since filter changed
@@ -184,14 +229,20 @@ export default function Dashboard() {
       fetchPresales();
     } else if (mainView === "resultados" && !funilData) {
       fetchFunil(mediaFilter);
+    } else if (mainView === "planejamento" && !planejData) {
+      fetchPlanej();
+    } else if (mainView === "orcamento" && !orcData) {
+      fetchOrc();
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getSyncFunctions = (view: string): string[] => {
+    if (view === "orcamento") return ["meta-ads"];
     if (view === "campanhas" || view === "diagnostico-mkt") return ["meta-ads"];
     if (view === "ociosidade") return ["calendar"];
     if (view === "presales") return ["presales"];
     if (view === "resultados") return ["dashboard", "meta-ads"];
+    if (view === "planejamento") return ["dashboard", "meta-ads"];
     if (view === "balanceamento") return ["baserow", "meta-ads"];
     return ["dashboard"];
   };
@@ -222,6 +273,8 @@ export default function Dashboard() {
       else if (mainView === "diagnostico-mkt") await fetchCamp(mediaFilter);
       else if (mainView === "presales") await fetchPresales();
       else if (mainView === "resultados") await fetchFunil(mediaFilter);
+      else if (mainView === "planejamento") await fetchPlanej();
+      else if (mainView === "orcamento") await fetchOrc();
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Refresh error:", err);
@@ -286,6 +339,8 @@ export default function Dashboard() {
         {mainView === "presales" && <PresalesView data={presalesData} loading={loading} />}
         {mainView === "resultados" && <ResultadosView data={funilData} loading={loading} />}
         {mainView === "diagnostico-mkt" && <DiagnosticoMktView data={campData} loading={loading} />}
+        {mainView === "planejamento" && <PlanejamentoView data={planejData} loading={loading} />}
+        {mainView === "orcamento" && <OrcamentoView data={orcData} loading={loading} onBudgetSave={handleBudgetSave} />}
         {mainView === "venda" && (
           <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
             <p style={{ fontSize: "16px" }}>Aba Venda — em construção</p>

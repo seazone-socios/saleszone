@@ -13,6 +13,7 @@ const FUNCTION_MAP: Record<string, Array<{ name: string; body?: Record<string, u
     { name: "sync-squad-dashboard", body: { mode: "daily-lost" } },
     { name: "sync-squad-dashboard", body: { mode: "alignment" } },
     { name: "sync-squad-dashboard", body: { mode: "metas" } },
+    { name: "sync-squad-dashboard", body: { mode: "monthly-rollup" } },
   ],
   calendar: [{ name: "sync-squad-calendar" }],
   presales: [{ name: "sync-squad-presales" }],
