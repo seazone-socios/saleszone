@@ -70,16 +70,17 @@ async function fetchAllInsights(
 
 async function getMetaToken(): Promise<string> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   const adminClient = createClient(supabaseUrl, serviceKey);
   const { data, error } = await adminClient.rpc("vault_read_secret", {
     secret_name: "META_ACCESS_TOKEN",
   });
   if (error) throw new Error(`Vault read error: ${error.message}`);
-  if (!data) throw new Error("META_ACCESS_TOKEN not found in vault");
-  return data;
+  const token = typeof data === "string" ? data.trim() : "";
+  if (!token) throw new Error("META_ACCESS_TOKEN not found in vault");
+  return token;
 }
 
 export async function GET() {
@@ -87,8 +88,8 @@ export async function GET() {
     const token = await getMetaToken();
 
     const until = new Date().toISOString().split("T")[0];
-    // Lifetime: since the beginning of the account
-    const since = "2020-01-01";
+    // Lifetime: same start date as Edge Function sync-squad-meta-ads
+    const since = "2024-06-01";
 
     // Fetch ACTIVE and PAUSED ads in parallel
     const [activeInsights, pausedInsights] = await Promise.all([
@@ -195,7 +196,8 @@ export async function GET() {
     const result: HistoricoCampanhasData = { ads };
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Historico campanhas error:", error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Historico campanhas error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
