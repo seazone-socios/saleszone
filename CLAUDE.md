@@ -56,6 +56,7 @@ src/
       dashboard/presales/route.ts            — Tempo de resposta pre-vendedores
       dashboard/regras-mql/route.ts          — Regras e taxas de qualificacao MQL
       dashboard/planejamento/route.ts        — Conversao midia paga vs historico
+      dashboard/planejamento/historico/route.ts — Historico TODAS campanhas Meta Ads (API direta)
       dashboard/orcamento/route.ts           — GET/POST orcamento mensal + gasto diario
   components/dashboard/
     header.tsx                               — Navegacao, usuario, botao Atualizar. Dropdown "Meta Ads" agrupa Campanhas/Diagnostico Mkt/Orcamento/Planejamento. SEM toggle de midia
@@ -67,7 +68,7 @@ src/
     balanceamento-view.tsx                   — Taxas de qualificacao por empreendimento/fonte
     resultados-view.tsx                      — Funil comercial Leads→WON + Reserva/Contrato
     presales-view.tsx                        — Performance pre-vendedores + deals recentes
-    planejamento-view.tsx                    — Metricas atuais vs historicas por empreendimento
+    planejamento-view.tsx                    — Metricas atuais vs historicas + Historico de Campanhas (drill-down campanha→adset→ad)
     orcamento-view.tsx                       — Budget mensal editavel, barra progresso, breakdown squad/emp
     ui.tsx                                   — Componentes reutilizaveis (MediaFilterToggle, Pill, TH, etc)
   lib/
@@ -82,6 +83,7 @@ src/
 supabase/
   functions/
     sync-squad-dashboard/index.ts            — ETL principal Pipedrive → Supabase
+    sync-squad-deals/index.ts               — ETL deals centralizados Pipedrive → squad_deals (4 modos)
     sync-squad-presales/index.ts             — ETL pre-vendas (deals + atividades)
     sync-baserow-forms/index.ts              — ETL Baserow formularios → Supabase
     sync-baserow-leads/index.ts              — ETL Baserow leads → Supabase
@@ -105,6 +107,7 @@ supabase/
 | `squad_baserow_forms` | Formularios do Baserow (fonte: Baserow). Populada por `sync-baserow-forms`. |
 | `squad_monthly_counts` | Contagens mensais acumuladas por tab x empreendimento (rollup de squad_daily_counts). Populada pelo modo `monthly-rollup`. |
 | `squad_orcamento` | Orcamento mensal global SZI. PK = `mes` (YYYY-MM). Input manual via aba Orcamento. |
+| `squad_deals` | Banco centralizado de deals Pipedrive (1 row por deal). PK = `deal_id`. Colunas: status, stage_id, canal, empreendimento, is_marketing (gerada), max_stage_order (Flow API), flow_fetched. RPC `get_planejamento_counts` usa essa tabela. |
 
 ## Edge Functions
 
@@ -127,6 +130,23 @@ ETL principal. Roda em 6 modos separados (cada um fica dentro do limite de 150MB
 - `getEmpreendimento(deal)`: campo empreendimento deve estar no EMPREENDIMENTO_MAP (11 empreendimentos)
 - Data por tab: MQL = `add_time`, SQL = campo qualificacao, OPP = campo reuniao, WON = `won_time`
 - Janela: ultimos 35 dias
+
+### sync-squad-deals
+Banco centralizado de deals do Pipedrive pipeline 28. Roda em 4 modos:
+
+| Modo | O que faz | Escrita |
+|------|-----------|---------|
+| `deals-open` | Busca deals abertos via `/pipelines/28/deals` | Upsert squad_deals (max_stage_order = stage_order, flow_fetched = true) |
+| `deals-won` | Busca deals ganhos via stage_id loop, dedup | Upsert squad_deals (max_stage_order = 14, flow_fetched = true) |
+| `deals-lost` | Busca deals perdidos, cutoff 365d, batched 5000/invocação | Upsert squad_deals (flow_fetched = false) |
+| `deals-flow` | Busca Flow API para deals lost pendentes (500/batch, concurrency=10) | Update max_stage_order + flow_fetched = true |
+
+- **Tabela:** `squad_deals` (1 row por deal, PK = deal_id)
+- **Coluna gerada:** `is_marketing = (canal = '12')` — evita recheck em queries
+- **max_stage_order:** open = stage_order atual, won = 14, lost = Flow API (historico de stages)
+- **RPC:** `get_planejamento_counts(months_back)` — counts MQL/SQL/OPP/WON por month/empreendimento usando max_stage_order thresholds (2/5/9)
+- **Planejamento** usa essa tabela via RPC ao inves de squad_monthly_counts
+- **Deploy:** `supabase functions deploy sync-squad-deals --no-verify-jwt`
 
 ### sync-squad-presales
 - Busca deals + atividades + flow (changelog) por pre-vendedor do Pipedrive
@@ -288,20 +308,28 @@ Ordem dos botoes: `Resultados | Meta Ads ▼ | Alinhamento Squad | Acompanhament
 - Botao fica ativo (dark bg) quando `mainView` e qualquer um dos 4 valores
 
 ## Botao "Atualizar" (sync)
-O botao no header chama `POST /api/sync` com `{"functions":["dashboard"]}` que executa sequencialmente:
-1. `sync-squad-dashboard` mode=daily-open (~4s)
-2. `sync-squad-dashboard` mode=daily-won (~8s)
-3. `sync-squad-dashboard` mode=daily-lost (~23s)
-4. `sync-squad-dashboard` mode=alignment (~3s)
-5. `sync-squad-dashboard` mode=metas (~3s)
+O botao sincroniza TODAS as abas de uma vez (nao so a aba atual). Usa modos **light** para evitar timeout/WORKER_LIMIT:
+- `dashboard-light`: pula `daily-lost` (58k+ deals, estoura 150MB)
+- `deals-light`: pula `deals-lost` e `deals-flow` (muito pesados, timeout 504)
+- As funcoes pesadas rodam no **pg_cron a cada 2h**
 
-Depois re-busca dados da view atual. Total: ~41s.
+**Interleaving:** funcoes Pipedrive (dashboard, deals, presales) sao intercaladas com nao-Pipedrive (meta-ads, calendar, baserow) + delay 2s entre chamadas Pipedrive consecutivas para evitar rate limit 429.
 
-**CUIDADO — Sync parcial:** Se o Vercel timeout matar a requisicao antes de daily-won/lost rodarem,
-o daily-open ja substituiu source=open mas won/lost nao rodaram. Resultado:
-dados incompletos (so deals abertos). O front mostra banner de warning quando isso acontece.
+**Apos sync:** limpa TODOS os caches do frontend. A aba atual re-busca dados imediatamente; outras abas buscam dados frescos ao serem acessadas.
 
-### Sync functions por tab
+**CUIDADO — Sync parcial:** Se alguma funcao falhar, o front mostra banner de warning com detalhes.
+**CUIDADO — Rate limit Pipedrive 429:** Nao rodar sync manual proximo ao horario do pg_cron (minutos :03 a :11 a cada 2h).
+
+### Sync functions (botao Atualizar — modo light)
+O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "presales", "baserow"]`
+
+| Function | Steps | O que pula vs full |
+|----------|-------|-------------------|
+| `dashboard-light` | daily-open, daily-won, alignment, metas, monthly-rollup | Pula `daily-lost` (58k+ deals, WORKER_LIMIT) |
+| `deals-light` | deals-open, deals-won | Pula `deals-lost` e `deals-flow` (timeout 504) |
+| Demais | Igual ao full | — |
+
+### Sync functions por tab (referencia — para pg_cron)
 | View | Functions |
 |------|-----------|
 | Acompanhamento | `["dashboard"]` |
@@ -312,8 +340,20 @@ dados incompletos (so deals abertos). O front mostra banner de warning quando is
 | Pre-Venda | `["presales"]` |
 | Resultados | `["dashboard", "meta-ads"]` |
 | Balanceamento | `["baserow", "meta-ads"]` |
-| Planejamento | `["dashboard", "meta-ads"]` |
+| Planejamento | `["deals", "meta-ads"]` |
 | Orcamento | `["meta-ads"]` |
+
+## Historico de Campanhas (dentro de Planejamento)
+- Secao sempre aberta na aba Planejamento, fetch automatico ao carregar
+- **Busca TODAS as campanhas** da conta Meta Ads (act_205286032338340) via API direta — NAO depende de squad_meta_ads
+- Usa `SUPABASE_SERVICE_ROLE_KEY` para ler `META_ACCESS_TOKEN` do vault
+- Query: `GET /act_ID/insights?level=ad&date_preset=lifetime` para ACTIVE e PAUSED separadamente (mesma logica da Edge Function)
+- Leads: usa `onsite_conversion.lead_grouped` (formularios reais, nao pixel)
+- Enriquece com dados de funil (MQL/SQL/OPP/WON) via RPC `get_ad_funnel_counts` e empreendimento de `squad_meta_ads`
+- **Drill-down 3 niveis:** Campanha → Conjunto de Anuncio → Criativo (clique para expandir)
+- Filtro por empreendimento, sort em todas as colunas, totais refletindo filtros
+- CPL com color coding: verde = abaixo da media, vermelho = acima
+- Campanhas sem match de empreendimento aparecem com empreendimento vazio
 
 ## Orcamento — Controle de Budget
 - Orcamento global SZI (um valor mensal para todos os squads)

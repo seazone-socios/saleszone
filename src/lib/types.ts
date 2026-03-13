@@ -357,6 +357,37 @@ export interface OrcamentoSquadBreakdown {
   empreendimentos: OrcamentoEmpBreakdown[];
 }
 
+// Histórico de Campanhas — acumulado lifetime por ad (latest snapshot)
+export interface HistoricoAdRow {
+  adId: string;
+  adName: string;
+  adsetName: string;
+  campaignName: string;
+  empreendimento: string;
+  effectiveStatus: string;
+  spend: number;
+  leads: number;
+  mql: number;
+  sql: number;
+  opp: number;
+  won: number;
+  impressions: number;
+  clicks: number;
+  cpl: number;
+  cmql: number;
+  csql: number;
+  copp: number;
+  cpw: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  lastSeenDate: string;
+}
+
+export interface HistoricoCampanhasData {
+  ads: HistoricoAdRow[];
+}
+
 // Pré-Venda — Tempo de resposta dos pré-vendedores
 export interface PresalesDealRow {
   deal_id: number;

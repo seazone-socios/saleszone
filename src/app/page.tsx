@@ -230,15 +230,34 @@ export default function Dashboard() {
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getSyncFunctions = (view: string): string[] => {
-    if (view === "orcamento") return ["meta-ads"];
-    if (view === "campanhas" || view === "diagnostico-mkt") return ["meta-ads"];
-    if (view === "ociosidade") return ["calendar"];
-    if (view === "presales") return ["presales"];
-    if (view === "resultados") return ["dashboard", "meta-ads"];
-    if (view === "planejamento") return ["dashboard", "meta-ads"];
-    if (view === "balanceamento") return ["baserow", "meta-ads"];
-    return ["dashboard"];
+  // Light sync: skip heavy functions (daily-lost, deals-lost, deals-flow) that are handled by pg_cron.
+  // Ordered to interleave Pipedrive-heavy with non-Pipedrive to avoid rate limiting.
+  const ALL_SYNC_FUNCTIONS = ["dashboard-light", "meta-ads", "deals-light", "calendar", "presales", "baserow"];
+
+  const clearAllCaches = () => {
+    setAcompData({});
+    setAlinhData(null);
+    setMisalignedDeals(null);
+    setCampData(null);
+    setBalancData(null);
+    setOcioData(null);
+    setPresalesData(null);
+    setFunilData(null);
+    setPlanejData(null);
+    setOrcData(null);
+  };
+
+  const fetchCurrentView = async () => {
+    if (mainView === "acompanhamento") await fetchAcomp(activeTab, "all");
+    else if (mainView === "alinhamento") await fetchAlinh();
+    else if (mainView === "ociosidade") await fetchOcio();
+    else if (mainView === "balanceamento") { await fetchBalanc(); await fetchOcio(); }
+    else if (mainView === "campanhas") await fetchCamp(mediaFilter);
+    else if (mainView === "diagnostico-mkt") await fetchCamp(mediaFilter);
+    else if (mainView === "presales") await fetchPresales();
+    else if (mainView === "resultados") await fetchFunil("all");
+    else if (mainView === "planejamento") await fetchPlanej();
+    else if (mainView === "orcamento") await fetchOrc();
   };
 
   const handleRefresh = async () => {
@@ -248,7 +267,7 @@ export default function Dashboard() {
       const syncRes = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ functions: getSyncFunctions(mainView) }),
+        body: JSON.stringify({ functions: ALL_SYNC_FUNCTIONS }),
       });
       const syncData = await syncRes.json().catch(() => null);
       if (syncData?.results) {
@@ -259,16 +278,10 @@ export default function Dashboard() {
           setSyncWarning(`Sync parcial: ${details}`);
         }
       }
-      if (mainView === "acompanhamento") await fetchAcomp(activeTab, "all");
-      else if (mainView === "alinhamento") await fetchAlinh();
-      else if (mainView === "ociosidade") await fetchOcio();
-      else if (mainView === "balanceamento") await fetchBalanc();
-      else if (mainView === "campanhas") await fetchCamp(mediaFilter);
-      else if (mainView === "diagnostico-mkt") await fetchCamp(mediaFilter);
-      else if (mainView === "presales") await fetchPresales();
-      else if (mainView === "resultados") await fetchFunil("all");
-      else if (mainView === "planejamento") await fetchPlanej();
-      else if (mainView === "orcamento") await fetchOrc();
+      // Clear all caches so every tab re-fetches fresh data on visit
+      clearAllCaches();
+      // Re-fetch the current view immediately
+      await fetchCurrentView();
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Refresh error:", err);

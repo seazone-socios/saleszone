@@ -50,57 +50,57 @@ export async function GET() {
     const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const startDate = `${curMonth}-01`;
 
-    // Parallel queries — all Pipedrive counts from squad_monthly_counts (stage-based)
-    const [allCountsRes, curMetaRes, histMetaRes] = await Promise.all([
-      // ALL months from squad_monthly_counts (including current — populated by monthly-rollup)
-      supabase
-        .from("squad_monthly_counts")
-        .select("month, empreendimento, tab, count")
-        .in("tab", ["mql", "sql", "opp", "won"]),
+    // Parallel queries: RPC for deal counts + Meta Ads for spend/leads
+    const [countsRes, curMetaRes, histMetaRes] = await Promise.all([
+      // Deal counts from squad_deals via RPC (stage-based, all months)
+      supabase.rpc("get_planejamento_counts", { months_back: 12 }),
       // Current month Meta Ads (max spend_month/leads_month per ad)
       supabase
         .from("squad_meta_ads")
         .select("ad_id, empreendimento, leads_month, spend_month")
-        .gte("snapshot_date", startDate),
+        .gte("snapshot_date", startDate)
+        .range(0, 49999),
       // Historical Meta Ads: all months before current
       supabase
         .from("squad_meta_ads")
         .select("ad_id, empreendimento, leads_month, spend_month, snapshot_date")
-        .lt("snapshot_date", startDate),
+        .lt("snapshot_date", startDate)
+        .range(0, 49999),
     ]);
 
-    if (allCountsRes.error) throw new Error(`Monthly counts: ${allCountsRes.error.message}`);
+    if (countsRes.error) throw new Error(`RPC get_planejamento_counts: ${countsRes.error.message}`);
     if (curMetaRes.error) throw new Error(`Current Meta Ads: ${curMetaRes.error.message}`);
     if (histMetaRes.error) throw new Error(`Historical Meta Ads: ${histMetaRes.error.message}`);
 
-    // Split into current month vs historical
+    // Split RPC results into current month vs historical (average)
     const curCounts = new Map<string, Record<string, number>>();
     const histByEmpMonth = new Map<string, Map<string, Record<string, number>>>();
-    for (const row of allCountsRes.data || []) {
+    for (const row of countsRes.data || []) {
       if (row.month === curMonth) {
-        // Current month
-        if (!curCounts.has(row.empreendimento)) curCounts.set(row.empreendimento, { mql: 0, sql: 0, opp: 0, won: 0 });
-        const cur = curCounts.get(row.empreendimento)!;
-        cur[row.tab] = (cur[row.tab] || 0) + (row.count || 0);
+        curCounts.set(row.empreendimento, {
+          mql: Number(row.mql) || 0,
+          sql: Number(row.sql) || 0,
+          opp: Number(row.opp) || 0,
+          won: Number(row.won) || 0,
+        });
       } else {
-        // Historical
         if (!histByEmpMonth.has(row.empreendimento)) histByEmpMonth.set(row.empreendimento, new Map());
-        const empMap = histByEmpMonth.get(row.empreendimento)!;
-        if (!empMap.has(row.month)) empMap.set(row.month, { mql: 0, sql: 0, opp: 0, won: 0 });
-        const counts = empMap.get(row.month)!;
-        counts[row.tab] = (counts[row.tab] || 0) + (row.count || 0);
+        histByEmpMonth.get(row.empreendimento)!.set(row.month, {
+          mql: Number(row.mql) || 0,
+          sql: Number(row.sql) || 0,
+          opp: Number(row.opp) || 0,
+          won: Number(row.won) || 0,
+        });
       }
     }
-    // Average across months with data
+    // Sum across historical months (totals, not averages)
     const histCounts = new Map<string, Record<string, number>>();
     for (const [emp, monthMap] of histByEmpMonth) {
-      const numMonths = monthMap.size || 1;
-      const avg: Record<string, number> = { mql: 0, sql: 0, opp: 0, won: 0 };
+      const total: Record<string, number> = { mql: 0, sql: 0, opp: 0, won: 0 };
       for (const counts of monthMap.values()) {
-        for (const tab of ["mql", "sql", "opp", "won"]) avg[tab] += counts[tab] || 0;
+        for (const tab of ["mql", "sql", "opp", "won"]) total[tab] += counts[tab] || 0;
       }
-      for (const tab of ["mql", "sql", "opp", "won"]) avg[tab] = Math.round(avg[tab] / numMonths);
-      histCounts.set(emp, avg);
+      histCounts.set(emp, total);
     }
 
     // Aggregate current Meta Ads: max spend_month/leads_month per ad
@@ -124,37 +124,12 @@ export async function GET() {
     }
 
     // Aggregate historical Meta Ads per empreendimento (average per month)
-    // Group by month first, then average
-    const histAdByMonth = new Map<string, Map<string, { leads: number; spend: number }>>();
-    for (const row of histMetaRes.data || []) {
-      const month = (row.snapshot_date as string).substring(0, 7);
-      if (!histAdByMonth.has(month)) histAdByMonth.set(month, new Map());
-      const monthAds = histAdByMonth.get(month)!;
-      // Max per ad within the month
-      const adKey = `${row.ad_id}`;
-      const cur = monthAds.get(adKey);
-      if (!cur || (Number(row.spend_month) || 0) > cur.spend) {
-        monthAds.set(adKey, {
-          leads: row.leads_month || 0,
-          spend: Number(row.spend_month) || 0,
-        });
-      }
-    }
-    // Sum per empreendimento per month, then average
-    const histMetaByEmpMonth = new Map<string, Map<string, { leads: number; spend: number }>>();
-    for (const [month, adMap] of histAdByMonth) {
-      for (const ad of adMap.values()) {
-        // We need empreendimento - find from raw data
-      }
-    }
-    // Simpler approach: aggregate by ad_id+month, then by empreendimento
     const histMetaEmpMonth = new Map<string, Map<string, { leads: number; spend: number }>>();
     for (const row of histMetaRes.data || []) {
       const month = (row.snapshot_date as string).substring(0, 7);
       const emp = row.empreendimento;
       const adMonthKey = `${row.ad_id}|${month}`;
 
-      // First pass: max per ad per month (track in temp map)
       if (!histMetaEmpMonth.has(adMonthKey)) {
         histMetaEmpMonth.set(adMonthKey, new Map([[emp, { leads: row.leads_month || 0, spend: Number(row.spend_month) || 0 }]]));
       } else {
@@ -164,14 +139,13 @@ export async function GET() {
         }
       }
     }
-    // Now aggregate by emp and month
-    const histMetaByEmp = new Map<string, { leads: number; spend: number; monthCount: number }>();
+    const histMetaByEmp = new Map<string, { leads: number; spend: number }>();
     const empMonthSeen = new Map<string, Set<string>>();
     for (const [adMonthKey, empMap] of histMetaEmpMonth) {
       const month = adMonthKey.split("|")[1];
       for (const [emp, vals] of empMap) {
         if (!histMetaByEmp.has(emp)) {
-          histMetaByEmp.set(emp, { leads: 0, spend: 0, monthCount: 0 });
+          histMetaByEmp.set(emp, { leads: 0, spend: 0 });
           empMonthSeen.set(emp, new Set());
         }
         const agg = histMetaByEmp.get(emp)!;
@@ -180,19 +154,21 @@ export async function GET() {
         empMonthSeen.get(emp)!.add(month);
       }
     }
-    // Average per month
     const histMeta = new Map<string, { leads: number; spend: number }>();
     for (const [emp, agg] of histMetaByEmp) {
-      const numMonths = empMonthSeen.get(emp)?.size || 1;
       histMeta.set(emp, {
-        leads: Math.round(agg.leads / numMonths),
-        spend: Math.round((agg.spend / numMonths) * 100) / 100,
+        leads: agg.leads,
+        spend: Math.round(agg.spend * 100) / 100,
       });
     }
 
-    // Build rows per empreendimento
+    // Build rows per empreendimento — include ALL from RPC + Meta Ads, not just active squads
     const allEmps = new Set<string>();
     for (const sq of SQUADS) for (const emp of sq.empreendimentos) allEmps.add(emp);
+    for (const emp of curCounts.keys()) allEmps.add(emp);
+    for (const emp of histCounts.keys()) allEmps.add(emp);
+    for (const emp of curMeta.keys()) allEmps.add(emp);
+    for (const emp of histMeta.keys()) allEmps.add(emp);
 
     const empRows: PlanejamentoEmpRow[] = [];
     for (const emp of allEmps) {
@@ -205,8 +181,6 @@ export async function GET() {
       const current = buildMetrics(cm.leads, cc.mql, cc.sql, cc.opp, cc.won, cm.spend);
       const historical = buildMetrics(hm.leads, hc.mql, hc.sql, hc.opp, hc.won, hm.spend);
 
-      // Efficiency: compare conversion and cost vs medians
-      // Simple heuristic: high if CPW < historical and oppToWon >= historical
       let efficiency: "high" | "medium" | "low" = "medium";
       if (current.won > 0 && current.cpw > 0) {
         const cpwBetter = historical.cpw > 0 && current.cpw <= historical.cpw;
@@ -222,7 +196,6 @@ export async function GET() {
       empRows.push({ emp, squadId, current, historical, efficiency });
     }
 
-    // Sort by squad, then by emp name
     empRows.sort((a, b) => a.squadId - b.squadId || a.emp.localeCompare(b.emp));
 
     const result: PlanejamentoData = {
