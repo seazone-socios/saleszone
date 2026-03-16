@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { SQUADS, NUM_DAYS } from "@/lib/constants";
+import { SQUADS, SQUAD_V_MAP, NUM_DAYS } from "@/lib/constants";
 import { generateDates } from "@/lib/dates";
 import type { TabKey, AcompanhamentoData, SquadData } from "@/lib/types";
+
+const SQUAD_CLOSERS: Record<number, number> = {};
+for (const [sqId, indices] of Object.entries(SQUAD_V_MAP)) {
+  SQUAD_CLOSERS[Number(sqId)] = indices.length;
+}
+const TOTAL_CLOSERS = Object.values(SQUAD_CLOSERS).reduce((a, b) => a + b, 0);
+const TABS: TabKey[] = ["mql", "sql", "opp", "won"];
 
 export const dynamic = "force-dynamic";
 
@@ -146,18 +153,33 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Fetch metas for current month
-    const monthDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const { data: metaRows } = await supabase
-      .from("squad_metas")
-      .select("squad_id, meta")
-      .eq("month", monthDate)
-      .eq("tab", tab);
+    // Calculate metas in real-time from nekt_meta26_metas + squad_daily_counts (90d ratios)
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const day = now.getDate();
+    const totalDaysInMonth = new Date(year, month, 0).getDate();
+    const metaDateStr = `01/${String(month).padStart(2, "0")}/${year}`;
 
-    if (metaRows) {
-      for (const m of metaRows) {
-        const sq = squads.find((s) => s.id === m.squad_id);
-        if (sq) sq.metaToDate = m.meta;
+    const [nektRes, ratiosRes] = await Promise.all([
+      supabase.from("nekt_meta26_metas").select("won_szi_meta_pago, won_szi_meta_direto").eq("data", metaDateStr).single(),
+      supabase.from("squad_ratios").select("ratios").eq("month", monthStart).single(),
+    ]);
+
+    if (nektRes.data) {
+      const wonMetaTotal = (Number(nektRes.data.won_szi_meta_pago) || 0) + (Number(nektRes.data.won_szi_meta_direto) || 0);
+      const wonPerCloser = wonMetaTotal / TOTAL_CLOSERS;
+      const r = ratiosRes.data?.ratios || { opp_won: 0, sql_opp: 0, mql_sql: 0 };
+
+      for (const sq of squads) {
+        const closers = SQUAD_CLOSERS[sq.id] || 1;
+        const wonMetaSquad = wonPerCloser * closers;
+        const metaMap: Record<TabKey, number> = {
+          won: (day / totalDaysInMonth) * wonMetaSquad,
+          opp: (day / totalDaysInMonth) * r.opp_won * wonMetaSquad,
+          sql: (day / totalDaysInMonth) * r.sql_opp * r.opp_won * wonMetaSquad,
+          mql: (day / totalDaysInMonth) * r.mql_sql * r.sql_opp * r.opp_won * wonMetaSquad,
+        };
+        sq.metaToDate = metaMap[tab] || 0;
       }
     }
 
