@@ -11,13 +11,33 @@ export async function GET() {
     const supabase = createClient(supabaseUrl, anonKey);
 
     // Buscar dados de ads + funil por empreendimento (lifetime, sem filtro de data)
-    const [historicoRes, funnelRes] = await Promise.all([
+    // + ads ativos no snapshot mais recente (para status correto)
+    const [historicoRes, funnelRes, latestSnapshotRes] = await Promise.all([
       supabase.rpc("get_historico_campanhas"),
       supabase.rpc("get_planejamento_counts", { months_back: 0, days_back: -1 }),
+      supabase
+        .from("squad_meta_ads")
+        .select("snapshot_date")
+        .order("snapshot_date", { ascending: false })
+        .limit(1),
     ]);
 
     if (historicoRes.error) throw new Error(`RPC error: ${historicoRes.error.message}`);
     if (funnelRes.error) console.warn(`Funnel RPC error (non-fatal): ${funnelRes.error.message}`);
+
+    // Buscar ad_ids ativos no snapshot mais recente
+    const activeAdIds = new Set<string>();
+    const latestDate = latestSnapshotRes.data?.[0]?.snapshot_date;
+    if (latestDate) {
+      const { data: activeAds } = await supabase
+        .from("squad_meta_ads")
+        .select("ad_id")
+        .eq("snapshot_date", latestDate)
+        .eq("effective_status", "ACTIVE");
+      for (const row of activeAds || []) {
+        activeAdIds.add(row.ad_id);
+      }
+    }
 
     // Agregar funil por empreendimento (somar todos os meses)
     const empFunnel = new Map<string, { mql: number; sql: number; opp: number; won: number }>();
@@ -62,7 +82,7 @@ export async function GET() {
         adsetName: row.adset_name || "",
         campaignName: row.campaign_name || "",
         empreendimento: emp,
-        effectiveStatus: row.effective_status || "PAUSED",
+        effectiveStatus: activeAdIds.has(row.ad_id) ? "ACTIVE" : "PAUSED",
         spend,
         leads,
         mql,
