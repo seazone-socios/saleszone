@@ -221,7 +221,7 @@ export function Header({ mainView, setMainView, onRefresh, loading, lastUpdated,
               gap: "4px",
             }}
           >
-            <ShoppingCart size={12} /> Perf. Vendas <ChevronDown size={10} style={{ transition: "transform 0.2s", transform: vendasDropdownOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
+            <ShoppingCart size={12} /> Vendas <ChevronDown size={10} style={{ transition: "transform 0.2s", transform: vendasDropdownOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
           </button>
           {vendasDropdownOpen && (
             <div
