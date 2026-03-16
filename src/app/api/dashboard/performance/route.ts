@@ -23,6 +23,7 @@ function median(arr: number[]): number {
 interface DealRow {
   deal_id: number;
   owner_name: string;
+  preseller_name: string | null;
   empreendimento: string | null;
   status: string;
   max_stage_order: number;
@@ -47,7 +48,7 @@ async function fetchDeals(cutoff: string | null): Promise<DealRow[]> {
   while (true) {
     let query = supabase
       .from("squad_deals")
-      .select("deal_id, owner_name, empreendimento, status, max_stage_order, lost_reason, is_marketing, add_time")
+      .select("deal_id, owner_name, preseller_name, empreendimento, status, max_stage_order, lost_reason, is_marketing, add_time")
       .eq("is_marketing", true);
     if (cutoff) query = query.gte("add_time", cutoff);
     query = query.range(offset, offset + PAGE - 1);
@@ -127,26 +128,8 @@ export async function GET(request: Request) {
       dealMap.set(d.deal_id, d);
     }
 
-    // Fetch deal data specifically for presales deal_ids that aren't in dealMap
-    // (presales_response may reference deals outside the date window or non-marketing)
-    const missingDealIds = presalesRows
-      .map((r) => r.deal_id)
-      .filter((id) => !dealMap.has(id));
-    if (missingDealIds.length > 0) {
-      // Fetch in batches of 200 (Supabase URL length limit)
-      for (let i = 0; i < missingDealIds.length; i += 200) {
-        const batch = missingDealIds.slice(i, i + 200);
-        const { data: extraDeals } = await supabase
-          .from("squad_deals")
-          .select("deal_id, owner_name, empreendimento, status, max_stage_order, lost_reason, is_marketing, add_time")
-          .in("deal_id", batch);
-        for (const d of (extraDeals || []) as DealRow[]) {
-          if (d.empreendimento && d.lost_reason !== "Duplicado/Erro") {
-            dealMap.set(d.deal_id, d);
-          }
-        }
-      }
-    }
+    // Note: preseller funnel now uses preseller_name from squad_deals directly,
+    // no need to cross-reference with presales_response for funnel counts
 
     // Helper: build per-empreendimento breakdown
     function buildByEmp(dealList: DealRow[]): PerformanceEmpBreakdown[] {
@@ -313,27 +296,27 @@ export async function GET(request: Request) {
     allEmps.sort((a, b) => b.opp - a.opp);
 
     // --- PRE-SELLERS ---
-    // Build map normalized by name (handles accent mismatches like Patrício vs Patricio)
-    const presellerDealsMap = new Map<string, PresalesRow[]>();
+    // Use preseller_name from squad_deals (Pipedrive "Pré Vendedor(a)" field)
+    // + presales_response for response time metrics
+    const presellerPresalesMap = new Map<string, PresalesRow[]>();
     for (const row of presalesRows) {
       const key = norm(row.preseller_name);
-      if (!presellerDealsMap.has(key)) presellerDealsMap.set(key, []);
-      presellerDealsMap.get(key)!.push(row);
+      if (!presellerPresalesMap.has(key)) presellerPresalesMap.set(key, []);
+      presellerPresalesMap.get(key)!.push(row);
     }
 
     const allPresellers: PerformancePresellerRow[] = [];
     for (const sq of SQUADS) {
       const pvName = sq.preVenda;
-      const pvDeals = presellerDealsMap.get(norm(pvName)) || [];
+      const pvNorm = norm(pvName);
 
-      const matchedDeals: DealRow[] = [];
-      for (const pd of pvDeals) {
-        const deal = dealMap.get(pd.deal_id);
-        if (deal) matchedDeals.push(deal);
-      }
+      // Funnel: deals from squad_deals where preseller_name matches (normalized)
+      const pvFunnelDeals = deals.filter((d) => d.preseller_name && norm(d.preseller_name) === pvNorm);
+      const funnel = countFunnel(pvFunnelDeals);
 
-      const funnel = countFunnel(matchedDeals);
-      const dealsWithAction = pvDeals.filter((d) => d.first_action_at != null);
+      // Response times: from presales_response
+      const pvPresalesDeals = presellerPresalesMap.get(pvNorm) || [];
+      const dealsWithAction = pvPresalesDeals.filter((d) => d.first_action_at != null);
       const responseTimes = dealsWithAction
         .map((d) => d.response_time_minutes)
         .filter((m): m is number => m != null && m >= 0);
@@ -347,11 +330,11 @@ export async function GET(request: Request) {
         sqlToOpp: rate(funnel.opp, funnel.sql),
         oppToWon: rate(funnel.won, funnel.opp),
         mqlToWon: rate(funnel.won, funnel.mql),
-        dealsReceived: pvDeals.length,
+        dealsReceived: funnel.mql,
         dealsWithAction: dealsWithAction.length,
         avgResponseMin: responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0,
         medianResponseMin: Math.round(median(responseTimes)),
-        byEmp: buildByEmp(matchedDeals),
+        byEmp: buildByEmp(pvFunnelDeals),
       });
     }
 

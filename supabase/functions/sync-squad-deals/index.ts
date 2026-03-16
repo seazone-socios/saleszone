@@ -15,6 +15,7 @@ const FIELD_EMPREENDIMENTO = "6d565fd4fce66c16da078f520a685fa2fa038272";
 const FIELD_QUALIFICACAO = "bc74bcc4326527cbeb331d1697d4c8812d68506e";
 const FIELD_REUNIAO = "bfafc352c5c6f2edbaa41bf6d1c6daa825fc9c16";
 const FIELD_RD_SOURCE = "ff53f6910138fa1d8969b686acb4b1336d50c9bd";
+const FIELD_PRESELLER = "34a7f4f5f78e8a8d4751ddfb3cfcfb224d8ff908";
 const CANAL_MARKETING_ID = "12";
 
 const EMPREENDIMENTO_MAP: Record<string, string> = {
@@ -131,6 +132,7 @@ function dealToRow(deal: any, maxStageOrder: number | null, flowFetched: boolean
     reuniao_date: deal[FIELD_REUNIAO] || null,
     lost_reason: deal.lost_reason || null,
     rd_source: deal[FIELD_RD_SOURCE] || null,
+    preseller_name: typeof deal[FIELD_PRESELLER] === "object" ? deal[FIELD_PRESELLER]?.name : null,
     stage_order: stageOrder,
     max_stage_order: maxStageOrder ?? stageOrder,
     flow_fetched: flowFetched,
