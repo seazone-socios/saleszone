@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Calendar, RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer, ShoppingCart, Activity, LogOut, TrendingUp, Target, Wallet, ChevronDown } from "lucide-react";
+import { RefreshCw, BarChart3, Users, Clock, Scale, Megaphone, Timer, ShoppingCart, Activity, LogOut, TrendingUp, Target, Wallet, ChevronDown } from "lucide-react";
 import { T } from "@/lib/constants";
 import { pillBtnStyle, pillBtnPrimaryStyle, viewBtnStyle } from "./ui";
 
@@ -345,9 +345,6 @@ export function Header({ mainView, setMainView, onRefresh, loading, lastUpdated,
           )}
         </div>
       </div>
-      <button style={pillBtnStyle()}>
-        <Calendar size={13} /> 4 semanas
-      </button>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <button onClick={onRefresh} disabled={loading} style={pillBtnPrimaryStyle()}>
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> {loading ? "Atualizando..." : "Atualizar"}
