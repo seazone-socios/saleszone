@@ -231,6 +231,7 @@ export function OrcamentoView({ data, loading, onBudgetSave }: OrcamentoViewProp
               <TH>Squad / Empreendimento</TH>
               <TH right>Gasto Atual</TH>
               <TH right>Gasto Diário</TH>
+              <TH right>Budget Recom.</TH>
               <TH right>Campanhas Ativas</TH>
               <TH right>% do Gasto Total</TH>
             </tr>
@@ -246,23 +247,38 @@ export function OrcamentoView({ data, loading, onBudgetSave }: OrcamentoViewProp
                   </td>
                   <td style={{ ...cellRightStyle, fontWeight: 700 }}>{formatBRL(sq.gastoAtual)}</td>
                   <td style={{ ...cellRightStyle, fontWeight: 700 }}>{formatBRL(sq.gastoDiario)}</td>
+                  <td style={{ ...cellRightStyle, fontWeight: 700 }}>
+                    {formatBRL(sq.empreendimentos.reduce((s, e) => s + (e.budgetRecomendado || 0), 0))}
+                  </td>
                   <td style={{ ...cellRightStyle, fontWeight: 700 }}>{sq.campaignsActive}</td>
                   <td style={{ ...cellRightStyle, fontWeight: 700 }}>
                     {totalSquadSpend > 0 ? ((sq.gastoAtual / totalSquadSpend) * 100).toFixed(1) + "%" : "—"}
                   </td>
                 </tr>
                 {/* Empreendimento rows */}
-                {sq.empreendimentos.map((emp) => (
-                  <tr key={`emp-${sq.id}-${emp.emp}`}>
-                    <td style={{ ...cellStyle, paddingLeft: "28px", color: T.cinza700 }}>{emp.emp}</td>
-                    <td style={cellRightStyle}>{formatBRL(emp.gastoAtual)}</td>
-                    <td style={cellRightStyle}>{formatBRL(emp.gastoDiario)}</td>
-                    <td style={cellRightStyle}>{emp.campaignsActive}</td>
-                    <td style={cellRightStyle}>
-                      {totalSquadSpend > 0 ? ((emp.gastoAtual / totalSquadSpend) * 100).toFixed(1) + "%" : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {sq.empreendimentos.map((emp) => {
+                  const delta = (emp.budgetRecomendado || 0) - emp.gastoDiario;
+                  const deltaColor = delta > 50 ? T.verde600 : delta < -50 ? T.destructive : T.cinza600;
+                  return (
+                    <tr key={`emp-${sq.id}-${emp.emp}`}>
+                      <td style={{ ...cellStyle, paddingLeft: "28px", color: T.cinza700 }}>{emp.emp}</td>
+                      <td style={cellRightStyle}>{formatBRL(emp.gastoAtual)}</td>
+                      <td style={cellRightStyle}>{formatBRL(emp.gastoDiario)}</td>
+                      <td style={{ ...cellRightStyle, color: deltaColor, fontWeight: 600 }}>
+                        {emp.budgetRecomendado ? formatBRL(emp.budgetRecomendado) : "—"}
+                        {emp.budgetRecomendado && Math.abs(delta) > 50 ? (
+                          <span style={{ fontSize: "10px", marginLeft: "4px" }}>
+                            {delta > 0 ? "↑" : "↓"}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td style={cellRightStyle}>{emp.campaignsActive}</td>
+                      <td style={cellRightStyle}>
+                        {totalSquadSpend > 0 ? ((emp.gastoAtual / totalSquadSpend) * 100).toFixed(1) + "%" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </>
             ))}
             {/* Total row */}
@@ -270,6 +286,9 @@ export function OrcamentoView({ data, loading, onBudgetSave }: OrcamentoViewProp
               <td style={{ ...cellStyle, fontWeight: 700, color: "#FFF", borderBottom: "none" }}>Total</td>
               <td style={{ ...cellRightStyle, fontWeight: 700, color: "#FFF", borderBottom: "none" }}>{formatBRL(data.gastoAtual)}</td>
               <td style={{ ...cellRightStyle, fontWeight: 700, color: "#FFF", borderBottom: "none" }}>{formatBRL(data.gastoDiario)}</td>
+              <td style={{ ...cellRightStyle, fontWeight: 700, color: "#FFF", borderBottom: "none" }}>
+                {formatBRL(data.squads.reduce((s, sq) => s + sq.empreendimentos.reduce((se, e) => se + (e.budgetRecomendado || 0), 0), 0))}
+              </td>
               <td style={{ ...cellRightStyle, fontWeight: 700, color: "#FFF", borderBottom: "none" }}>{data.squads.reduce((s, sq) => s + sq.campaignsActive, 0)}</td>
               <td style={{ ...cellRightStyle, fontWeight: 700, color: "#FFF", borderBottom: "none" }}>100%</td>
             </tr>

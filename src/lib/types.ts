@@ -360,6 +360,7 @@ export interface OrcamentoEmpBreakdown {
   gastoAtual: number;
   gastoDiario: number;
   campaignsActive: number;
+  budgetRecomendado?: number;
 }
 
 export interface OrcamentoSquadBreakdown {

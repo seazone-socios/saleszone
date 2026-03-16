@@ -29,18 +29,22 @@ export async function GET() {
     const snapshotDate = latestSnap?.[0]?.snapshot_date || now.toISOString().split("T")[0];
 
     // Queries paralelas
-    const [orcRes, metaAllRes, metaLatestRes] = await Promise.all([
+    const [orcRes, metaAllRes, metaLatestRes, funnel90Res, funnelAllRes] = await Promise.all([
       supabase.from("squad_orcamento").select("*").eq("mes", curMonth).maybeSingle(),
       // Todos snapshots do mês para max spend_month por ad
       supabase
         .from("squad_meta_ads")
-        .select("ad_id, spend_month, squad_id, empreendimento")
+        .select("ad_id, spend_month, leads_month, squad_id, empreendimento")
         .gte("snapshot_date", startDate),
       // Último snapshot para campaign_name + effective_status (contagem de campanhas ativas)
       supabase
         .from("squad_meta_ads")
         .select("ad_id, campaign_name, effective_status, squad_id, empreendimento")
         .eq("snapshot_date", snapshotDate),
+      // Funil 90 dias (para budget recomendado)
+      supabase.rpc("get_planejamento_counts", { months_back: 12, days_back: 90 }),
+      // Funil histórico completo
+      supabase.rpc("get_planejamento_counts", { months_back: -1, days_back: -1 }),
     ]);
 
     if (orcRes.error) console.warn("Orcamento query error:", orcRes.error.message);
@@ -50,22 +54,25 @@ export async function GET() {
     const orcamentoTotal = Number(orcRes.data?.orcamento_total) || 0;
 
     // Max spend_month por ad_id em todos os snapshots do mês
-    const adMaxSpend = new Map<string, { spend: number; squadId: number; emp: string }>();
+    const adMaxSpend = new Map<string, { spend: number; leads: number; squadId: number; emp: string }>();
     for (const row of metaAllRes.data || []) {
       const spend = Number(row.spend_month) || 0;
+      const leads = Number(row.leads_month) || 0;
       const cur = adMaxSpend.get(row.ad_id);
       if (!cur || spend > cur.spend) {
-        adMaxSpend.set(row.ad_id, { spend, squadId: row.squad_id, emp: row.empreendimento });
+        adMaxSpend.set(row.ad_id, { spend, leads, squadId: row.squad_id, emp: row.empreendimento });
       }
     }
 
-    // Gasto por empreendimento e squad
+    // Gasto e leads por empreendimento e squad
     const empSpend = new Map<string, number>(); // emp -> spend
+    const empLeads = new Map<string, number>(); // emp -> leads (for CPL)
     let gastoAtual = 0;
     for (const [, data] of adMaxSpend) {
       gastoAtual += data.spend;
       const key = `${data.squadId}:${data.emp}`;
       empSpend.set(key, (empSpend.get(key) || 0) + data.spend);
+      empLeads.set(key, (empLeads.get(key) || 0) + data.leads);
     }
     gastoAtual = Math.round(gastoAtual * 100) / 100;
 
@@ -109,6 +116,134 @@ export async function GET() {
       else if (ratio > 1.05) status = "alerta";
     }
 
+    // ===== Budget recomendado por empreendimento =====
+    // Aggregate funnel data by empreendimento
+    type FunnelAgg = { mql: number; sql: number; opp: number; won: number };
+    const funnel90 = new Map<string, FunnelAgg>();
+    const funnelAll = new Map<string, FunnelAgg>();
+    for (const row of funnel90Res.data || []) {
+      const cur = funnel90.get(row.empreendimento) || { mql: 0, sql: 0, opp: 0, won: 0 };
+      cur.mql += Number(row.mql); cur.sql += Number(row.sql);
+      cur.opp += Number(row.opp); cur.won += Number(row.won);
+      funnel90.set(row.empreendimento, cur);
+    }
+    for (const row of funnelAllRes.data || []) {
+      const cur = funnelAll.get(row.empreendimento) || { mql: 0, sql: 0, opp: 0, won: 0 };
+      cur.mql += Number(row.mql); cur.sql += Number(row.sql);
+      cur.opp += Number(row.opp); cur.won += Number(row.won);
+      funnelAll.set(row.empreendimento, cur);
+    }
+
+    // CPL médio da conta
+    const totalLeads = Array.from(empLeads.values()).reduce((s, l) => s + l, 0);
+    const cplConta = totalLeads > 0 ? gastoAtual / totalLeads : 50;
+
+    // Identify performing emps (active campaigns + WON in 90d) — keep their budget
+    const diasRestantes = diasNoMes - diasPassados;
+    const budgetDiarioTotal = diasRestantes > 0 && orcamentoTotal > 0
+      ? (orcamentoTotal - gastoAtual) / diasRestantes
+      : 0;
+
+    // For each emp: determine if "performing" (has active campaigns AND WON in 90d)
+    const allEmps = new Set<string>();
+    for (const sq of SQUADS) for (const e of sq.empreendimentos) allEmps.add(e);
+
+    const empBudgetRec = new Map<string, number>();
+    let budgetPerformando = 0;
+
+    // Step 1: lock performing emps at current daily spend
+    for (const emp of allEmps) {
+      const f90 = funnel90.get(emp);
+      // Find this emp's active campaign count across all squads
+      let hasActive = false;
+      for (const sq of SQUADS) {
+        const key = `${sq.id}:${emp}`;
+        if ((empCampaigns.get(key)?.size || 0) > 0) hasActive = true;
+      }
+      const hasWon90 = f90 && f90.won > 0;
+
+      if (hasActive && hasWon90) {
+        // Performing: lock at current daily spend
+        let dailySpend = 0;
+        for (const sq of SQUADS) {
+          const key = `${sq.id}:${emp}`;
+          dailySpend += (empSpend.get(key) || 0) / (diasPassados || 1);
+        }
+        empBudgetRec.set(emp, Math.round(dailySpend));
+        budgetPerformando += dailySpend;
+      }
+    }
+
+    // Step 2: distribute remaining budget among non-performing emps proportionally to 1/CPW
+    const budgetOutros = Math.max(0, budgetDiarioTotal - budgetPerformando);
+    const empScores = new Map<string, number>();
+    let totalScore = 0;
+
+    for (const emp of allEmps) {
+      if (empBudgetRec.has(emp)) continue; // already locked
+
+      const f90 = funnel90.get(emp) || { mql: 0, sql: 0, opp: 0, won: 0 };
+      const fAll = funnelAll.get(emp) || { mql: 0, sql: 0, opp: 0, won: 0 };
+
+      // Blend MQL→WON rate (90d weighted by sample size + historical)
+      const taxa90 = f90.mql > 0 ? f90.won / f90.mql : 0;
+      const taxaHist = fAll.mql > 0 ? fAll.won / fAll.mql : 0;
+      let w90 = f90.mql >= 100 && f90.won > 0 ? 0.7 : f90.mql >= 30 ? 0.5 : f90.mql >= 10 ? 0.2 : 0;
+      if (taxa90 === 0 && taxaHist > 0) w90 = Math.min(w90, 0.2);
+      let taxaBlend = taxa90 * w90 + taxaHist * (1 - w90);
+
+      // Fallback to account average if no WON data at all
+      if (taxaBlend === 0) {
+        const totalWon = Array.from(funnelAll.values()).reduce((s, f) => s + f.won, 0);
+        const totalMql = Array.from(funnelAll.values()).reduce((s, f) => s + f.mql, 0);
+        taxaBlend = totalMql > 0 ? totalWon / totalMql : 0.004;
+      }
+
+      // CPL for this emp (use emp-specific if available, else account average)
+      let empCpl = cplConta;
+      for (const sq of SQUADS) {
+        const key = `${sq.id}:${emp}`;
+        const s = empSpend.get(key) || 0;
+        const l = empLeads.get(key) || 0;
+        if (l > 0) empCpl = s / l;
+      }
+
+      const cpw = taxaBlend > 0 ? empCpl / taxaBlend : 999999;
+      const score = cpw < 999999 ? 1 / cpw : 0;
+      empScores.set(emp, score);
+      totalScore += score;
+    }
+
+    // Allocate proportionally with min floor R$150/dia
+    const pisoMin = 150;
+    if (totalScore > 0 && budgetOutros > 0) {
+      // First pass: raw allocation
+      const rawAlloc = new Map<string, number>();
+      for (const [emp, score] of empScores) {
+        rawAlloc.set(emp, (score / totalScore) * budgetOutros);
+      }
+      // Second pass: enforce floor, redistribute
+      let lockedBudget = 0;
+      let lockedScore = 0;
+      const needsRedist: string[] = [];
+      for (const [emp, alloc] of rawAlloc) {
+        if (alloc < pisoMin && alloc > 0) {
+          empBudgetRec.set(emp, pisoMin);
+          lockedBudget += pisoMin;
+          lockedScore += empScores.get(emp) || 0;
+        } else {
+          needsRedist.push(emp);
+        }
+      }
+      const remainBudget = budgetOutros - lockedBudget;
+      const remainScore = totalScore - lockedScore;
+      for (const emp of needsRedist) {
+        const score = empScores.get(emp) || 0;
+        const alloc = remainScore > 0 ? (score / remainScore) * remainBudget : pisoMin;
+        empBudgetRec.set(emp, Math.round(Math.max(pisoMin, alloc)));
+      }
+    }
+
     // Breakdown por squad com empreendimentos
     const squadsBreakdown: OrcamentoSquadBreakdown[] = SQUADS.map((sq) => {
       const empreendimentos: OrcamentoEmpBreakdown[] = sq.empreendimentos.map((emp) => {
@@ -120,6 +255,7 @@ export async function GET() {
           gastoAtual: empGasto,
           gastoDiario: diasPassados > 0 ? Math.round((empGasto / diasPassados) * 100) / 100 : 0,
           campaignsActive: empCampCount,
+          budgetRecomendado: empBudgetRec.get(emp) || 0,
         };
       });
 
