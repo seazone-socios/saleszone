@@ -6,7 +6,7 @@ import { T } from "@/lib/constants";
 import { pillBtnStyle, pillBtnPrimaryStyle, viewBtnStyle } from "./ui";
 
 const META_ADS_VIEWS = ["campanhas", "diagnostico-mkt", "orcamento", "planejamento"] as const;
-const VENDAS_VIEWS = ["perf-vendas", "baseline"] as const;
+const VENDAS_VIEWS = ["perf-vendas", "baseline", "diagnostico-vendas"] as const;
 
 const SeazoneIcon = () => (
   <svg width="28" height="29" viewBox="0 0 48 49" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -241,6 +241,7 @@ export function Header({ mainView, setMainView, onRefresh, loading, lastUpdated,
               {([
                 { key: "perf-vendas", label: "Perf. Vendas", icon: <ShoppingCart size={13} /> },
                 { key: "baseline", label: "Base-Line", icon: <BarChart3 size={13} /> },
+                { key: "diagnostico-vendas", label: "Diagnóstico Vendas", icon: <Activity size={13} /> },
               ] as const).map((item) => (
                 <button
                   key={item.key}

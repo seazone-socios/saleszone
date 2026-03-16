@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { T } from "@/lib/constants";
-import type { TabKey, MediaFilter, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData, MisalignedDealsData, PlanejamentoData, OrcamentoData, PerformanceData, BaselineData } from "@/lib/types";
+import type { TabKey, MediaFilter, AcompanhamentoData, AlinhamentoData, CampanhasData, RegrasMqlData, OciosidadeData, PresalesData, FunilData, MisalignedDealsData, PlanejamentoData, OrcamentoData, PerformanceData, BaselineData, DiagVendasData } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Header } from "@/components/dashboard/header";
 import { AcompanhamentoView } from "@/components/dashboard/acompanhamento-view";
@@ -18,6 +18,7 @@ import { PlanejamentoView } from "@/components/dashboard/planejamento-view";
 import { OrcamentoView } from "@/components/dashboard/orcamento-view";
 import { PerformancePreVendasView, PerformanceVendasView } from "@/components/dashboard/performance-view";
 import { BaselineView } from "@/components/dashboard/baseline-view";
+import { DiagnosticoVendasView } from "@/components/dashboard/diagnostico-vendas-view";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function Dashboard() {
   const [perfData, setPerfData] = useState<PerformanceData | null>(null);
   const [perfDays, setPerfDays] = useState(90);
   const [baselineData, setBaselineData] = useState<BaselineData | null>(null);
+  const [diagVendasData, setDiagVendasData] = useState<DiagVendasData | null>(null);
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -214,6 +216,19 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchDiagVendas = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/diagnostico-vendas");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setDiagVendasData(await res.json());
+    } catch (err) {
+      console.error("Fetch diag vendas error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const handleBudgetSave = useCallback(async (value: number) => {
     const now = new Date();
     const mes = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -266,6 +281,8 @@ export default function Dashboard() {
       fetchPerformance(perfDays);
     } else if (mainView === "baseline" && !baselineData) {
       fetchBaseline();
+    } else if (mainView === "diagnostico-vendas" && !diagVendasData) {
+      fetchDiagVendas();
     }
   }, [activeTab, mainView]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -286,6 +303,7 @@ export default function Dashboard() {
     setOrcData(null);
     setPerfData(null);
     setBaselineData(null);
+    setDiagVendasData(null);
   };
 
   const fetchCurrentView = async () => {
@@ -301,6 +319,7 @@ export default function Dashboard() {
     else if (mainView === "orcamento") await fetchOrc();
     else if (mainView === "perf-prevendas" || mainView === "perf-vendas") await fetchPerformance(perfDays);
     else if (mainView === "baseline") await fetchBaseline();
+    else if (mainView === "diagnostico-vendas") await fetchDiagVendas();
   };
 
   const handleRefresh = async () => {
@@ -394,6 +413,7 @@ export default function Dashboard() {
         {mainView === "perf-prevendas" && <PerformancePreVendasView data={perfData} loading={loading} daysBack={perfDays} onDaysChange={(d) => { setPerfDays(d); setPerfData(null); fetchPerformance(d); }} />}
         {mainView === "perf-vendas" && <PerformanceVendasView data={perfData} loading={loading} daysBack={perfDays} onDaysChange={(d) => { setPerfDays(d); setPerfData(null); fetchPerformance(d); }} />}
         {mainView === "baseline" && <BaselineView data={baselineData} loading={loading} />}
+        {mainView === "diagnostico-vendas" && <DiagnosticoVendasView data={diagVendasData} loading={loading} />}
         {mainView === "venda" && (
           <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
             <p style={{ fontSize: "16px" }}>Aba Venda — em construção</p>

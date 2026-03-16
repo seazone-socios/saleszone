@@ -135,6 +135,7 @@ function dealToRow(deal: any, maxStageOrder: number | null, flowFetched: boolean
     preseller_name: typeof deal[FIELD_PRESELLER] === "object" ? deal[FIELD_PRESELLER]?.name : null,
     stage_order: stageOrder,
     max_stage_order: maxStageOrder ?? stageOrder,
+    last_activity_date: deal.last_activity_date || null,
     flow_fetched: flowFetched,
     synced_at: new Date().toISOString(),
   };

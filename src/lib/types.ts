@@ -509,6 +509,46 @@ export interface BaselineData {
   maxMonthOffset: number;
 }
 
+// Diagnóstico Vendas — Leadtime de Follow-up
+export type VendasSeveridade = "CRITICO" | "ALERTA" | "OK";
+
+export interface DiagVendasDealRow {
+  deal_id: number;
+  title: string;
+  owner_name: string;
+  empreendimento: string | null;
+  stage_order: number;
+  stage_name: string;
+  last_activity_date: string | null;
+  leadtime_hours: number;
+  severidade: VendasSeveridade;
+  link: string;
+}
+
+export interface DiagVendasCloserSummary {
+  name: string;
+  squadId: number;
+  totalDeals: number;
+  avgLeadtimeHours: number;
+  maxLeadtimeHours: number;
+  criticos: number;
+  alertas: number;
+  ok: number;
+  severidade: VendasSeveridade;
+}
+
+export interface DiagVendasData {
+  closers: DiagVendasCloserSummary[];
+  deals: DiagVendasDealRow[];
+  totals: {
+    totalDeals: number;
+    avgLeadtimeHours: number;
+    criticos: number;
+    alertas: number;
+    ok: number;
+  };
+}
+
 // Pré-Venda — Tempo de resposta dos pré-vendedores
 export interface PresalesDealRow {
   deal_id: number;
