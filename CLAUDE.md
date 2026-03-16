@@ -60,6 +60,7 @@ src/
       dashboard/orcamento/route.ts           — GET/POST orcamento mensal + gasto diario
       dashboard/performance/route.ts         — Funil por pessoa (closer, preseller, marketing) + time series
       dashboard/performance/baseline/route.ts — Cohort analysis: closers alinhados pelo mes de contratacao
+      dashboard/diagnostico-vendas/route.ts  — Leadtime de follow-up por closer (deals abertos sem atividade)
   components/dashboard/
     header.tsx                               — Navegacao, usuario, botao Atualizar. Dropdown "Meta Ads" agrupa Campanhas/Diagnostico Mkt/Orcamento/Planejamento. Dropdown "Perf. Vendas" agrupa Perf. Vendas/Base-Line/Diagnostico Vendas
     acompanhamento-view.tsx                  — Heatmap 28 dias + metas
@@ -74,6 +75,7 @@ src/
     orcamento-view.tsx                       — Budget mensal editavel, barra progresso, breakdown squad/emp
     performance-view.tsx                     — Perf. Vendas (closers + empreendimentos) + Perf. Pre-Vendas. Graficos OPP→WON com mediana e filtro de periodo
     baseline-view.tsx                        — Base-Line: cohort analysis de closers alinhados pela data de contratacao. Toggle conversao/OPP/WON, heatmap, grafico acumulado com mediana
+    diagnostico-vendas-view.tsx              — Diagnostico Vendas: leadtime follow-up closers, deals sem atividade futura, atividades atrasadas
     ui.tsx                                   — Componentes reutilizaveis (MediaFilterToggle, Pill, TH, etc)
   lib/
     constants.ts                             — Squads, empreendimentos, closers, UI tokens (T)
@@ -111,7 +113,7 @@ supabase/
 | `squad_baserow_forms` | Formularios do Baserow (fonte: Baserow). Populada por `sync-baserow-forms`. |
 | `squad_monthly_counts` | Contagens mensais acumuladas por tab x empreendimento (rollup de squad_daily_counts). Populada pelo modo `monthly-rollup`. |
 | `squad_orcamento` | Orcamento mensal global SZI. PK = `mes` (YYYY-MM). Input manual via aba Orcamento. |
-| `squad_deals` | Banco centralizado de deals Pipedrive (1 row por deal). PK = `deal_id`. Colunas: status, stage_id, canal, empreendimento, is_marketing (gerada), max_stage_order (Flow API), flow_fetched, lost_reason, rd_source. RPC `get_planejamento_counts` usa essa tabela. Filtros RPC: `is_marketing=true`, `rd_source ILIKE '%paga%'`, `lost_reason <> 'Duplicado/Erro'`. |
+| `squad_deals` | Banco centralizado de deals Pipedrive (1 row por deal). PK = `deal_id`. Colunas: status, stage_id, canal, empreendimento, is_marketing (gerada), max_stage_order (Flow API), flow_fetched, lost_reason, rd_source, last_activity_date, next_activity_date, owner_name, preseller_name. RPC `get_planejamento_counts` usa essa tabela. Filtros RPC: `is_marketing=true`, `rd_source ILIKE '%paga%'`, `lost_reason <> 'Duplicado/Erro'`. |
 
 ## Edge Functions
 
@@ -140,7 +142,7 @@ Banco centralizado de deals do Pipedrive pipeline 28. Roda em 4 modos:
 
 | Modo | O que faz | Escrita |
 |------|-----------|---------|
-| `deals-open` | Busca deals abertos via `/pipelines/28/deals` | Upsert squad_deals (max_stage_order = stage_order, flow_fetched = true) |
+| `deals-open` | Busca deals abertos via `/pipelines/28/deals` + `/users` para resolver owner_name | Upsert squad_deals (max_stage_order = stage_order, flow_fetched = true) |
 | `deals-won` | Busca deals ganhos via stage_id loop, dedup | Upsert squad_deals (max_stage_order = 14, flow_fetched = true) |
 | `deals-lost` | Busca deals perdidos, cutoff 365d, batched 5000/invocação | Upsert squad_deals (flow_fetched = false) |
 | `deals-flow` | Busca Flow API para deals lost pendentes (500/batch, concurrency=10) | Update max_stage_order + flow_fetched = true |
@@ -286,7 +288,7 @@ Componente reutilizavel `MediaFilterToggle` em `ui.tsx`. Type `MediaFilter` cent
 - `/deals` endpoint **IGNORA** `stage_id` param tambem — retorna TODOS os stages. Deduplicar por `deal.id` obrigatorio
 - `/deals` retorna deals de TODOS os pipelines — filtrar `deal.pipeline_id === 28` no codigo
 - `/pipelines/{id}/deals` retorna **SOMENTE** deals abertos, ignora param `status`
-- `/pipelines/{id}/deals` retorna `user_id` como **integer** (nao objeto como `/deals`)
+- `/pipelines/{id}/deals` retorna `user_id` como **integer** (nao objeto como `/deals`). Para resolver `owner_name`, buscar `/users` antes e mapear. `sync-squad-deals` modo `deals-open` ja faz isso
 - Para deals won/lost do pipeline 28: usar `/deals?status=X&stage_id=Y` com os 14 stage IDs + dedup por deal.id + filtro pipeline_id
 - Pipeline 28 stage IDs: `[392, 184, 186, 338, 346, 339, 187, 340, 208, 312, 313, 311, 191, 192]`
 - Pipeline 28 tem ~1300 open, ~2900 won, **58k+ lost** — lost deals PRECISAM de sort + cutoff 90d
@@ -350,6 +352,7 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
 | Balanceamento | `["baserow", "meta-ads"]` |
 | Planejamento | `["deals", "meta-ads"]` |
 | Orcamento | `["meta-ads"]` |
+| Diagnostico Vendas | `["deals"]` (deals-open popula last/next_activity_date + owner_name) |
 
 ## Planejamento — Filtro de Periodo
 - Select no topo da view com opcoes: 30d, 60d, 90d, 6 meses, 12 meses (default), Todo historico
@@ -398,6 +401,20 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
 - `maxDuration = 300` no sync route (sem isso, default e 10s e sync timeout)
 - Deploy: conta do Fernando (fernandopereira-ship-it). Colaboradores precisam ser adicionados pelo owner
 - Auto-deploy via push para branch main no GitHub
+
+## Diagnostico Vendas (Leadtime de Follow-up)
+- Aba dentro do dropdown "Perf. Vendas" no header
+- **API:** `/api/dashboard/diagnostico-vendas` — busca deals abertos de `squad_deals`, filtra pelos 5 closers (V_COLS)
+- **Leadtime:** horas desde `last_activity_date` (ou `add_time` se null) ate agora. `last_activity_date` e DATE (sem hora), precisao ~1 dia
+- **Thresholds severidade:** CRITICO >= 24h, ALERTA >= 12h, OK < 12h
+- **Severidade do closer:** baseada na media do leadtime dos seus deals (mesmos thresholds)
+- **Atividade futura:** `next_activity_date` do Pipedrive. Deal "sem atividade futura" = campo null. Deal "atividade atrasada" = `next_activity_date < hoje`
+- **Summary cards:** Deals Abertos, Leadtime Medio, Criticos, Alertas, Sem Atividade Futura, Atividades Atrasadas
+- **Ranking closers:** tabela sortavel com colunas Deals, Leadtime Medio/Max, Criticos, Alertas, OK, Sem Futura, Atrasadas, Severidade
+- **Filtros deals:** Squad, Closer, Severidade, Etapa, Atividade (todas/sem futura/atrasada)
+- **Deal links:** titulo clicavel abre no Pipedrive (`https://seazone-fd92b9.pipedrive.com/deal/{id}`)
+- **CUIDADO owner_name:** `/pipelines/{id}/deals` retorna `user_id` como integer (nao objeto). `syncDealsOpen` busca `/users` primeiro e mapeia `user_id → name`. Sem isso, `owner_name` fica null e a aba nao mostra dados
+- **Paginacao:** API route pagina com `.range()` (>1000 deals abertos possiveis)
 
 ## Base-Line (Cohort Analysis de Closers)
 - Aba dentro do dropdown "Perf. Vendas" no header
