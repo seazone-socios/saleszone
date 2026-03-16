@@ -10,10 +10,22 @@ export async function GET() {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const supabase = createClient(supabaseUrl, anonKey);
 
-    // Buscar dados de ads + funil por empreendimento (lifetime, sem filtro de data)
-    // + ads ativos no snapshot mais recente (para status correto)
-    const [historicoRes, funnelRes, latestSnapshotRes] = await Promise.all([
-      supabase.rpc("get_historico_campanhas"),
+    // Paginar RPC get_historico_campanhas (Supabase limita 1000 rows por response)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const historicoData: any[] = [];
+    let offset = 0;
+    while (true) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)("get_historico_campanhas").range(offset, offset + 999);
+      if (error) throw new Error(`RPC error: ${error.message}`);
+      if (!data || data.length === 0) break;
+      historicoData.push(...data);
+      if (data.length < 1000) break;
+      offset += 1000;
+    }
+
+    // Buscar funil + snapshot mais recente em paralelo
+    const [funnelRes, latestSnapshotRes] = await Promise.all([
       supabase.rpc("get_planejamento_counts", { months_back: 0, days_back: -1 }),
       supabase
         .from("squad_meta_ads")
@@ -22,7 +34,6 @@ export async function GET() {
         .limit(1),
     ]);
 
-    if (historicoRes.error) throw new Error(`RPC error: ${historicoRes.error.message}`);
     if (funnelRes.error) console.warn(`Funnel RPC error (non-fatal): ${funnelRes.error.message}`);
 
     // Buscar ad_ids ativos no snapshot mais recente
@@ -53,14 +64,14 @@ export async function GET() {
 
     // Calcular spend total por empreendimento (para distribuição proporcional)
     const empSpend = new Map<string, number>();
-    for (const row of historicoRes.data || []) {
+    for (const row of historicoData) {
       const emp = row.empreendimento || "";
       const spend = Number(row.spend) || 0;
       empSpend.set(emp, (empSpend.get(emp) || 0) + spend);
     }
 
     const ads: HistoricoAdRow[] = [];
-    for (const row of historicoRes.data || []) {
+    for (const row of historicoData) {
       const spend = Number(row.spend) || 0;
       const leads = Number(row.leads) || 0;
       const impressions = Number(row.impressions) || 0;

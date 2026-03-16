@@ -39,12 +39,14 @@ export async function GET(req: NextRequest) {
         .from("squad_meta_ads")
         .select("*")
         .eq("snapshot_date", snapshotDate)
-        .order("spend", { ascending: false }),
+        .order("spend", { ascending: false })
+        .limit(10000),
       // Todos os snapshots do mês para calcular max spend_month/leads_month por ad
       supabase
         .from("squad_meta_ads")
         .select("ad_id, spend_month, leads_month")
-        .gte("snapshot_date", startDate),
+        .gte("snapshot_date", startDate)
+        .limit(10000),
       supabase.rpc("get_emp_counts_summary", { p_start_date: startDate }),
       supabase.rpc("get_ad_won_cross_emp"),
     ]);
