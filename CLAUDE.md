@@ -359,6 +359,14 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
 - Ao trocar filtro, limpa `planejData` e re-busca (state `planejDays` em page.tsx)
 - Filtros de deals na RPC: pipeline SZI (28), canal Marketing, rd_source contendo "paga", motivo de perda ≠ "Duplicado/Erro"
 
+## Planejamento — Metricas de Conversao (Summary Cards)
+- **IMPORTANTE:** A API retorna `current` (mes atual) e `historical` (meses anteriores no periodo). Os cards devem mostrar o **total combinado** (`current + historical`) como valor principal, nao so o mes atual
+- Cards: Investimento Total, WON Total, CPW Medio, MQL→SQL, SQL→OPP, OPP→WON
+- Valor principal = total do periodo selecionado (current + historical combinados via `tCombined`)
+- Linha de comparacao = "Mes atual" (so o mes corrente, para referencia)
+- Seta de direcao compara valor do periodo vs mes atual
+- **Armadilha:** se usar so `tc` (current = mes atual) como valor principal, os numeros ficam artificialmente baixos (ex: 1 WON no mes vs 168 no periodo). Sempre combinar current + historical para o valor dos cards
+
 ## Historico de Campanhas (dentro de Planejamento)
 - Secao sempre aberta na aba Planejamento, fetch automatico ao carregar
 - **Busca dados via RPC** `get_historico_campanhas` — agrega snapshots de `squad_meta_ads` por ad_id (MAX spend/leads/impressions/clicks lifetime). RPC retorna ~1776 rows, DEVE ser paginada com `.range()` (limite 1000 por request)
