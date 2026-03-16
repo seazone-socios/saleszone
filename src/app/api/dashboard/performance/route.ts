@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { SQUADS, V_COLS, SQUAD_V_MAP } from "@/lib/constants";
 import type { PerformanceData, PerformancePersonRow, PerformancePresellerRow, PerformanceSquadSummary, PerformanceEmpBreakdown, PerformanceEmpRow } from "@/lib/types";
@@ -306,7 +307,42 @@ export async function GET(request: Request) {
     }
     allEmps.sort((a, b) => b.opp - a.opp);
 
-    // --- PRE-SELLERS ---
+    // --- PRE-SELLERS: fetch done activities count from Pipedrive ---
+    const pvActivityCounts = new Map<string, number>(); // normalized name -> done count
+    try {
+      const srvKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (srvKey) {
+        const srvClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, srvKey);
+        const { data: tokenData } = await srvClient.rpc("vault_read_secret", { secret_name: "PIPEDRIVE_API_TOKEN" });
+        const pipToken = typeof tokenData === "string" ? tokenData : "";
+        if (pipToken) {
+          // Get PV user IDs from config
+          const { data: pvConfig } = await srvClient.from("config_pre_vendedores").select("user_id, user_name");
+          const startDate = cutoff ? new Date(cutoff).toISOString().substring(0, 10) : "2020-01-01";
+          const endDate = new Date().toISOString().substring(0, 10);
+
+          // Fetch done activities count per PV in parallel
+          const pvFetches = (pvConfig || []).map(async (pv: { user_id: number; user_name: string }) => {
+            let total = 0;
+            let start = 0;
+            while (true) {
+              const url = `https://seazone-fd92b9.pipedrive.com/api/v1/activities?api_token=${pipToken}&user_id=${pv.user_id}&done=1&start_date=${startDate}&end_date=${endDate}&limit=500&start=${start}`;
+              const res = await fetch(url);
+              const data = await res.json();
+              const items = data?.data || [];
+              total += items.length;
+              if (!data?.additional_data?.pagination?.more_items_in_collection) break;
+              start += 500;
+            }
+            pvActivityCounts.set(norm(pv.user_name), total);
+          });
+          await Promise.all(pvFetches);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch PV activities from Pipedrive:", e);
+    }
+
     // Use preseller_name from squad_deals (Pipedrive "Pré Vendedor(a)" field)
     // + presales_response for response time metrics
     const presellerPresalesMap = new Map<string, PresalesRow[]>();
@@ -342,7 +378,7 @@ export async function GET(request: Request) {
         oppToWon: rate(funnel.won, funnel.opp),
         mqlToWon: rate(funnel.won, funnel.mql),
         dealsReceived: funnel.mql,
-        dealsWithAction: dealsWithAction.length,
+        dealsWithAction: pvActivityCounts.get(pvNorm) ?? dealsWithAction.length,
         avgResponseMin: responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0,
         medianResponseMin: Math.round(median(responseTimes)),
         byEmp: buildByEmp(pvFunnelDeals),
