@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { SQUADS, SQUAD_V_MAP, NUM_DAYS } from "@/lib/constants";
 import { generateDates } from "@/lib/dates";
-import type { TabKey, AcompanhamentoData, SquadData } from "@/lib/types";
+import type { TabKey, AcompanhamentoData, SquadData, MetaInfo } from "@/lib/types";
 
 const SQUAD_CLOSERS: Record<number, number> = {};
 for (const [sqId, indices] of Object.entries(SQUAD_V_MAP)) {
@@ -153,35 +153,72 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Calculate metas in real-time from nekt_meta26_metas + squad_daily_counts (90d ratios)
+    // Calculate metas in real-time with per-squad ratios (90d counts by empreendimento)
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const day = now.getDate();
     const totalDaysInMonth = new Date(year, month, 0).getDate();
     const metaDateStr = `01/${String(month).padStart(2, "0")}/${year}`;
 
-    const [nektRes, ratiosRes] = await Promise.all([
+    const start90 = new Date(now);
+    start90.setDate(start90.getDate() - 90);
+    const startDate90 = start90.toISOString().substring(0, 10);
+
+    const [nektRes, counts90Res] = await Promise.all([
       supabase.rpc("get_szi_meta", { meta_date: metaDateStr }).single(),
-      supabase.from("squad_ratios").select("ratios").eq("month", monthStart).single(),
+      supabase.from("squad_daily_counts").select("tab, empreendimento, count").gte("date", startDate90).lte("date", endDate),
     ]);
 
+    let metaInfo: MetaInfo | undefined;
     const nektData = nektRes.data as { won_szi_meta_pago: number; won_szi_meta_direto: number } | null;
     if (nektData) {
       const wonMetaTotal = (Number(nektData.won_szi_meta_pago) || 0) + (Number(nektData.won_szi_meta_direto) || 0);
       const wonPerCloser = wonMetaTotal / TOTAL_CLOSERS;
-      const r = ratiosRes.data?.ratios || { opp_won: 0, sql_opp: 0, mql_sql: 0 };
 
+      // Build per-squad 90d counts
+      const squadEmpSets = new Map<number, Set<string>>();
+      for (const sq of SQUADS) {
+        squadEmpSets.set(sq.id, new Set(sq.empreendimentos));
+      }
+
+      const squadCounts = new Map<number, Record<string, number>>();
+      for (const sq of SQUADS) {
+        squadCounts.set(sq.id, { mql: 0, sql: 0, opp: 0, won: 0 });
+      }
+      for (const r of counts90Res.data || []) {
+        for (const sq of SQUADS) {
+          if (squadEmpSets.get(sq.id)!.has(r.empreendimento)) {
+            const c = squadCounts.get(sq.id)!;
+            if (r.tab in c) c[r.tab] += r.count || 0;
+          }
+        }
+      }
+
+      const metaInfoSquads: MetaInfo["squads"] = [];
       for (const sq of squads) {
         const closers = SQUAD_CLOSERS[sq.id] || 1;
         const wonMetaSquad = wonPerCloser * closers;
+        const c = squadCounts.get(sq.id)!;
+        const ratios = {
+          opp_won: c.won > 0 ? c.opp / c.won : 0,
+          sql_opp: c.opp > 0 ? c.sql / c.opp : 0,
+          mql_sql: c.sql > 0 ? c.mql / c.sql : 0,
+        };
         const metaMap: Record<TabKey, number> = {
           won: (day / totalDaysInMonth) * wonMetaSquad,
-          opp: (day / totalDaysInMonth) * r.opp_won * wonMetaSquad,
-          sql: (day / totalDaysInMonth) * r.sql_opp * r.opp_won * wonMetaSquad,
-          mql: (day / totalDaysInMonth) * r.mql_sql * r.sql_opp * r.opp_won * wonMetaSquad,
+          opp: (day / totalDaysInMonth) * ratios.opp_won * wonMetaSquad,
+          sql: (day / totalDaysInMonth) * ratios.sql_opp * ratios.opp_won * wonMetaSquad,
+          mql: (day / totalDaysInMonth) * ratios.mql_sql * ratios.sql_opp * ratios.opp_won * wonMetaSquad,
         };
         sq.metaToDate = metaMap[tab] || 0;
+        metaInfoSquads.push({
+          id: sq.id,
+          closers,
+          counts90d: { mql: c.mql, sql: c.sql, opp: c.opp, won: c.won },
+          ratios: { mql_sql: Math.round(ratios.mql_sql * 100) / 100, sql_opp: Math.round(ratios.sql_opp * 100) / 100, opp_won: Math.round(ratios.opp_won * 100) / 100 },
+        });
       }
+      metaInfo = { wonMetaTotal, wonPerCloser, day, totalDaysInMonth, squads: metaInfoSquads };
     }
 
     // Grand totals
@@ -200,6 +237,7 @@ export async function GET(req: NextRequest) {
       squads,
       dates,
       grand: { totalMes: grandTotal, metaToDate: grandMeta, daily: grandDaily },
+      metaInfo,
     };
 
     return NextResponse.json(result);

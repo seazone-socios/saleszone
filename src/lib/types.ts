@@ -26,10 +26,24 @@ export interface SquadData {
   metaToDate: number;
 }
 
+export interface MetaInfo {
+  wonMetaTotal: number;
+  wonPerCloser: number;
+  day: number;
+  totalDaysInMonth: number;
+  squads: Array<{
+    id: number;
+    closers: number;
+    counts90d: { mql: number; sql: number; opp: number; won: number };
+    ratios: { mql_sql: number; sql_opp: number; opp_won: number };
+  }>;
+}
+
 export interface AcompanhamentoData {
   squads: SquadData[];
   dates: DateColumn[];
   grand: { totalMes: number; metaToDate: number; daily: number[] };
+  metaInfo?: MetaInfo;
 }
 
 export interface AlinhamentoCell {

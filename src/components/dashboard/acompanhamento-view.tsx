@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronLeft, Columns3 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Columns3, Info } from "lucide-react";
 import { T, TABS, SQUAD_COLORS, TAB_COLORS, NUM_DAYS, MONTHS_PT } from "@/lib/constants";
 import type { TabKey, AcompanhamentoData } from "@/lib/types";
 import { Pill, Tag, TH, cellStyle, cellRightStyle, hdrBaseStyle } from "./ui";
@@ -112,7 +112,59 @@ export function AcompanhamentoView({ data, activeTab, setActiveTab, loading }: P
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <Pill label="Total mês" value={grand.totalMes} bg={grand.totalMes >= grand.metaToDate ? T.verde600 : T.destructive} />
-          <Pill label="Meta TD" value={grand.metaToDate} />
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <Pill label="Meta TD" value={grand.metaToDate} />
+            {data?.metaInfo && (
+              <div style={{ position: "relative", marginLeft: "4px", cursor: "help" }} className="meta-info-trigger">
+                <Info size={15} color={T.cinza400} />
+                <div className="meta-info-tooltip" style={{
+                  display: "none",
+                  position: "absolute",
+                  top: "24px",
+                  right: 0,
+                  zIndex: 1000,
+                  backgroundColor: "#1a1a2e",
+                  color: "#e0e0e0",
+                  borderRadius: "8px",
+                  padding: "14px 16px",
+                  fontSize: "12px",
+                  lineHeight: "1.6",
+                  whiteSpace: "pre",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                  minWidth: "420px",
+                  fontFamily: "monospace",
+                }}>
+                  {(() => {
+                    const m = data.metaInfo!;
+                    const lines: string[] = [];
+                    lines.push(`Meta WON total: ${m.wonMetaTotal} (pago + direto)`);
+                    lines.push(`WON por closer: ${m.wonPerCloser.toFixed(1)} (${m.wonMetaTotal} / 5 closers)`);
+                    lines.push(`Proporção: dia ${m.day} / ${m.totalDaysInMonth} = ${(m.day / m.totalDaysInMonth * 100).toFixed(1)}%`);
+                    lines.push(``);
+                    lines.push(`Ratios 90d por squad (${activeTab.toUpperCase()}):`);
+                    for (const sq of m.squads) {
+                      const c = sq.counts90d;
+                      lines.push(``);
+                      lines.push(`Squad ${sq.id} (${sq.closers} closer${sq.closers > 1 ? "s" : ""}):`);
+                      lines.push(`  MQL=${c.mql}  SQL=${c.sql}  OPP=${c.opp}  WON=${c.won}`);
+                      lines.push(`  mql/sql=${sq.ratios.mql_sql}  sql/opp=${sq.ratios.sql_opp}  opp/won=${sq.ratios.opp_won}`);
+                      const wonMetaSq = m.wonPerCloser * sq.closers;
+                      const proportion = m.day / m.totalDaysInMonth;
+                      let metaVal = proportion * wonMetaSq;
+                      if (activeTab === "opp") metaVal *= sq.ratios.opp_won;
+                      if (activeTab === "sql") metaVal *= sq.ratios.opp_won * sq.ratios.sql_opp;
+                      if (activeTab === "mql") metaVal *= sq.ratios.opp_won * sq.ratios.sql_opp * sq.ratios.mql_sql;
+                      lines.push(`  Meta ${activeTab.toUpperCase()} TD = ${Math.round(metaVal)}`);
+                    }
+                    return lines.join("\n");
+                  })()}
+                </div>
+                <style>{`
+                  .meta-info-trigger:hover .meta-info-tooltip { display: block !important; }
+                `}</style>
+              </div>
+            )}
+          </div>
           <Pill
             label="% Meta"
             value={`${pct}%`}
