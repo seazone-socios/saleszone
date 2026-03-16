@@ -520,8 +520,11 @@ export interface DiagVendasDealRow {
   stage_order: number;
   stage_name: string;
   last_activity_date: string | null;
+  next_activity_date: string | null;
   leadtime_hours: number;
   severidade: VendasSeveridade;
+  sem_atividade_futura: boolean;
+  atividade_atrasada: boolean;
   link: string;
 }
 
@@ -534,6 +537,8 @@ export interface DiagVendasCloserSummary {
   criticos: number;
   alertas: number;
   ok: number;
+  semAtividadeFutura: number;
+  atividadeAtrasada: number;
   severidade: VendasSeveridade;
 }
 
@@ -546,6 +551,8 @@ export interface DiagVendasData {
     criticos: number;
     alertas: number;
     ok: number;
+    semAtividadeFutura: number;
+    atividadeAtrasada: number;
   };
 }
 

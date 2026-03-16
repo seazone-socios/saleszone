@@ -30,8 +30,8 @@ function formatLeadtime(hours: number): string {
   return `${days}d ${h}h`;
 }
 
-type DealSortKey = "title" | "owner_name" | "empreendimento" | "stage_order" | "last_activity_date" | "leadtime_hours" | "severidade";
-type CloserSortKey = "name" | "squadId" | "totalDeals" | "avgLeadtimeHours" | "maxLeadtimeHours" | "criticos" | "alertas" | "ok" | "severidade";
+type DealSortKey = "title" | "owner_name" | "empreendimento" | "stage_order" | "last_activity_date" | "next_activity_date" | "leadtime_hours" | "severidade";
+type CloserSortKey = "name" | "squadId" | "totalDeals" | "avgLeadtimeHours" | "maxLeadtimeHours" | "criticos" | "alertas" | "ok" | "semAtividadeFutura" | "atividadeAtrasada" | "severidade";
 type SortDir = "asc" | "desc";
 
 const SEV_ORDER: Record<string, number> = { CRITICO: 0, ALERTA: 1, OK: 2 };
@@ -41,6 +41,7 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
   const [filtroCloser, setFiltroCloser] = useState("todos");
   const [filtroSev, setFiltroSev] = useState("todos");
   const [filtroStage, setFiltroStage] = useState("todos");
+  const [filtroAtividade, setFiltroAtividade] = useState("todos");
 
   const [dealSort, setDealSort] = useState<DealSortKey>("leadtime_hours");
   const [dealDir, setDealDir] = useState<SortDir>("desc");
@@ -81,6 +82,8 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
       if (filtroCloser !== "todos" && d.owner_name !== filtroCloser) return false;
       if (filtroSev !== "todos" && d.severidade !== filtroSev) return false;
       if (filtroStage !== "todos" && String(d.stage_order) !== filtroStage) return false;
+      if (filtroAtividade === "sem-futura" && !d.sem_atividade_futura) return false;
+      if (filtroAtividade === "atrasada" && !d.atividade_atrasada) return false;
       return true;
     }).sort((a, b) => {
       let cmp = 0;
@@ -98,12 +101,15 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
         case "last_activity_date":
           cmp = (a.last_activity_date || "").localeCompare(b.last_activity_date || "");
           break;
+        case "next_activity_date":
+          cmp = (a.next_activity_date || "").localeCompare(b.next_activity_date || "");
+          break;
         default:
           cmp = (a[dealSort] as number) - (b[dealSort] as number);
       }
       return cmp * dir;
     });
-  }, [data, filtroSquad, filtroCloser, filtroSev, filtroStage, dealSort, dealDir]);
+  }, [data, filtroSquad, filtroCloser, filtroSev, filtroStage, filtroAtividade, dealSort, dealDir]);
 
   // Filter closers
   const filteredClosers = useMemo(() => {
@@ -147,6 +153,8 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
         <SummaryCard label="Leadtime Médio" value={formatLeadtime(totals.avgLeadtimeHours)} sub="Desde última atividade" color={T.fg} />
         <SummaryCard label="Críticos" value={String(totals.criticos)} sub=">= 24h sem atividade" color="#FFF" bgColor="#E7000B" />
         <SummaryCard label="Alertas" value={String(totals.alertas)} sub=">= 12h sem atividade" color="#FFF" bgColor="#FF6900" />
+        <SummaryCard label="Sem Atividade Futura" value={String(totals.semAtividadeFutura)} sub="Nenhuma atividade agendada" color="#FFF" bgColor={T.cinza700} />
+        <SummaryCard label="Atividades Atrasadas" value={String(totals.atividadeAtrasada)} sub="Próx. atividade no passado" color="#FFF" bgColor={T.roxo600} />
       </div>
 
       {/* Ranking de Closers */}
@@ -163,6 +171,8 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
                 <SortTh label="Críticos" col="criticos" align="right" sortKey={closerSort} sortDir={closerDir} onSort={toggleCloserSort} />
                 <SortTh label="Alertas" col="alertas" align="right" sortKey={closerSort} sortDir={closerDir} onSort={toggleCloserSort} />
                 <SortTh label="OK" col="ok" align="right" sortKey={closerSort} sortDir={closerDir} onSort={toggleCloserSort} />
+                <SortTh label="Sem Futura" col="semAtividadeFutura" align="right" sortKey={closerSort} sortDir={closerDir} onSort={toggleCloserSort} />
+                <SortTh label="Atrasadas" col="atividadeAtrasada" align="right" sortKey={closerSort} sortDir={closerDir} onSort={toggleCloserSort} />
                 <SortTh label="Severidade" col="severidade" align="center" sortKey={closerSort} sortDir={closerDir} onSort={toggleCloserSort} />
               </tr>
             </thead>
@@ -192,6 +202,8 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
                     <td style={{ ...tdStyle, textAlign: "right", color: c.criticos > 0 ? "#E7000B" : T.cinza300, fontWeight: c.criticos > 0 ? 700 : 400 }}>{c.criticos}</td>
                     <td style={{ ...tdStyle, textAlign: "right", color: c.alertas > 0 ? "#FF6900" : T.cinza300, fontWeight: c.alertas > 0 ? 700 : 400 }}>{c.alertas}</td>
                     <td style={{ ...tdStyle, textAlign: "right", color: c.ok > 0 ? "#5EA500" : T.cinza300 }}>{c.ok}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", color: c.semAtividadeFutura > 0 ? T.cinza700 : T.cinza300, fontWeight: c.semAtividadeFutura > 0 ? 700 : 400 }}>{c.semAtividadeFutura}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", color: c.atividadeAtrasada > 0 ? T.roxo600 : T.cinza300, fontWeight: c.atividadeAtrasada > 0 ? 700 : 400 }}>{c.atividadeAtrasada}</td>
                     <td style={{ ...tdStyle, textAlign: "center" }}>
                       <SevBadge sev={c.severidade} />
                     </td>
@@ -214,6 +226,8 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
             options={[{ value: "todos", label: "Todos" }, { value: "CRITICO", label: "Crítico" }, { value: "ALERTA", label: "Alerta" }, { value: "OK", label: "OK" }]} />
           <FilterSelect label="Etapa" value={filtroStage} onChange={setFiltroStage}
             options={[{ value: "todos", label: "Todas" }, ...stageOptions.map((o) => ({ value: String(o), label: STAGE_NAMES[o] || `Stage ${o}` }))]} />
+          <FilterSelect label="Atividade" value={filtroAtividade} onChange={setFiltroAtividade}
+            options={[{ value: "todos", label: "Todas" }, { value: "sem-futura", label: "Sem atividade futura" }, { value: "atrasada", label: "Atividade atrasada" }]} />
           <span style={{ fontSize: "11px", color: T.cinza400, alignSelf: "center" }}>
             {filteredDeals.length} deals
           </span>
@@ -228,6 +242,7 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
                 <SortTh label="Empreendimento" col="empreendimento" align="left" sortKey={dealSort} sortDir={dealDir} onSort={toggleDealSort} />
                 <SortTh label="Etapa" col="stage_order" align="left" sortKey={dealSort} sortDir={dealDir} onSort={toggleDealSort} />
                 <SortTh label="Última Atividade" col="last_activity_date" align="center" sortKey={dealSort} sortDir={dealDir} onSort={toggleDealSort} />
+                <SortTh label="Próx. Atividade" col="next_activity_date" align="center" sortKey={dealSort} sortDir={dealDir} onSort={toggleDealSort} />
                 <SortTh label="Leadtime" col="leadtime_hours" align="right" sortKey={dealSort} sortDir={dealDir} onSort={toggleDealSort} />
                 <SortTh label="Severidade" col="severidade" align="center" sortKey={dealSort} sortDir={dealDir} onSort={toggleDealSort} />
               </tr>
@@ -260,6 +275,19 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
                       {d.last_activity_date
                         ? new Date(d.last_activity_date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
                         : "—"}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "center", fontSize: "12px" }}>
+                      {d.next_activity_date ? (
+                        <span style={{
+                          color: d.atividade_atrasada ? T.roxo600 : T.verde700,
+                          fontWeight: d.atividade_atrasada ? 700 : 400,
+                        }}>
+                          {new Date(d.next_activity_date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                          {d.atividade_atrasada && " (atrasada)"}
+                        </span>
+                      ) : (
+                        <span style={{ color: T.cinza700, fontWeight: 600 }}>—</span>
+                      )}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: sev.text }}>
                       {formatLeadtime(d.leadtime_hours)}

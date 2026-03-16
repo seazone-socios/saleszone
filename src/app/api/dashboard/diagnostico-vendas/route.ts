@@ -49,7 +49,7 @@ export async function GET() {
     while (true) {
       const { data, error } = await supabase
         .from("squad_deals")
-        .select("deal_id, title, owner_name, empreendimento, stage_order, last_activity_date, add_time")
+        .select("deal_id, title, owner_name, empreendimento, stage_order, last_activity_date, next_activity_date, add_time")
         .eq("status", "open")
         .range(offset, offset + PAGE_SIZE - 1);
 
@@ -64,7 +64,8 @@ export async function GET() {
     const closerSet = new Set(V_COLS);
     const closerDeals = allRows.filter((d) => closerSet.has(d.owner_name));
 
-    // Calculate leadtime for each deal
+    // Calculate leadtime and activity status for each deal
+    const todayStr = now.toISOString().substring(0, 10);
     const deals: DiagVendasDealRow[] = closerDeals.map((d) => {
       const refDate = d.last_activity_date || d.add_time;
       let leadtimeHours = 0;
@@ -74,6 +75,8 @@ export async function GET() {
         leadtimeHours = Math.max(0, (now.getTime() - ref.getTime()) / (1000 * 60 * 60));
       }
       const severidade = getSeveridade(leadtimeHours);
+      const semAtividadeFutura = !d.next_activity_date;
+      const atividadeAtrasada = !!d.next_activity_date && d.next_activity_date < todayStr;
 
       return {
         deal_id: d.deal_id,
@@ -83,8 +86,11 @@ export async function GET() {
         stage_order: d.stage_order,
         stage_name: STAGE_NAMES[d.stage_order] || `Stage ${d.stage_order}`,
         last_activity_date: d.last_activity_date,
+        next_activity_date: d.next_activity_date,
         leadtime_hours: Math.round(leadtimeHours),
         severidade,
+        sem_atividade_futura: semAtividadeFutura,
+        atividade_atrasada: atividadeAtrasada,
         link: `https://seazone-fd92b9.pipedrive.com/deal/${d.deal_id}`,
       };
     });
@@ -117,6 +123,8 @@ export async function GET() {
         criticos,
         alertas,
         ok,
+        semAtividadeFutura: cDeals.filter((d) => d.sem_atividade_futura).length,
+        atividadeAtrasada: cDeals.filter((d) => d.atividade_atrasada).length,
         severidade: getSeveridade(avg),
       });
     }
@@ -137,6 +145,8 @@ export async function GET() {
         criticos: deals.filter((d) => d.severidade === "CRITICO").length,
         alertas: deals.filter((d) => d.severidade === "ALERTA").length,
         ok: deals.filter((d) => d.severidade === "OK").length,
+        semAtividadeFutura: deals.filter((d) => d.sem_atividade_futura).length,
+        atividadeAtrasada: deals.filter((d) => d.atividade_atrasada).length,
       },
     };
 
