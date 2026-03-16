@@ -21,11 +21,45 @@ const EMPREENDIMENTOS = {
     "Jurerê Spot III",
     "Barra Grande Spot",
     "Vistas de Anitá II"
+  ],
+  // Históricos / descontinuados (squad_id = 0)
+  0: [
+    "Urubici Spot II",
+    "Urubici Spot",
+    "Morro das Pedras Spot",
+    "Batel Spot",
+    "Santo Antônio Spot",
+    "Meireles Spot",
+    "Ilha do Campeche II Spot",
+    "Bonito Spot",
+    "Santinho Spot",
+    "Foz Spot",
+    "Canas Beach Spot",
+    "Ponta das Canas Spot",
+    "Novo Campeche Spot",
+    "Salvador Spot",
+    "Imbassaí Spot",
+    "Trancoso Spot",
+    "Japaratinga Spot",
+    "Ingleses Spot",
+    "Rosa Sul Spot",
+    "Sul da Ilha Spot",
+    "Cachoeira Beach Spot",
+    "Canasvieiras Spot",
+    "Penha Spot",
+    "Campeche Spot",
+    "Jurerê Spot",
+    "Canela Spot",
+    "Altavista",
+    "Genérica",
+    "Bairros Nobres",
   ]
 };
 const ALIASES = {
-  "vistas de anita": "Vistas de Anitá II"
+  "vistas de anita": "Vistas de Anitá II",
 };
+// Nomes que não matcham com nenhum empreendimento mas devem ser identificados
+const GENERIC_CAMPAIGNS = ["genérica", "generica", "engajamento"];
 const ALL_EMPS = [];
 for (const [sqId, emps] of Object.entries(EMPREENDIMENTOS)){
   for (const name of emps)ALL_EMPS.push({
@@ -48,6 +82,10 @@ function matchEmpreendimento(campaignName) {
       const emp = ALL_EMPS.find((e)=>e.name === realName);
       if (emp) return emp;
     }
+  }
+  // Generic/engagement campaigns
+  for (const kw of GENERIC_CAMPAIGNS) {
+    if (norm.includes(kw)) return { name: "Genérica", squadId: 0 };
   }
   return null;
 }
