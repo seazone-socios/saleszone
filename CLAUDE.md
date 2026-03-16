@@ -264,6 +264,7 @@ Componente reutilizavel `MediaFilterToggle` em `ui.tsx`. Type `MediaFilter` cent
 **Frontend:** ao trocar filtro, limpa campData e re-busca dados da aba atual (campanhas ou diagnostico-mkt).
 
 ## Meta Ads — Armadilhas Conhecidas
+- **Atribuicao de funil por ad:** NAO existe link direto entre ad_id do Meta Ads e deal_id do Pipedrive. A conexao e indireta via **empreendimento**. Para calcular MQL/SQL/OPP/WON por ad, usar distribuicao proporcional pelo share de spend do ad dentro do empreendimento. RPCs `get_ad_funnel_counts` e `get_ad_won_cross_emp` NAO existem no banco (foram planejadas mas nunca criadas). Usar `get_planejamento_counts(-1, -1)` para historico ou `get_emp_counts_summary` para dados mensais
 - `squad_meta_ads` armazena snapshots diarios **acumulados** (lifetime), NAO deltas diarios
 - Campos `spend` e `leads` sao lifetime; campos `spend_month` e `leads_month` sao do mes corrente
 - SEMPRE usar `spend_month`/`leads_month` para exibir dados do mes (funil, campanhas)
@@ -353,11 +354,9 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
 
 ## Historico de Campanhas (dentro de Planejamento)
 - Secao sempre aberta na aba Planejamento, fetch automatico ao carregar
-- **Busca TODAS as campanhas** da conta Meta Ads (act_205286032338340) via API direta — NAO depende de squad_meta_ads
-- Usa `SUPABASE_SERVICE_ROLE_KEY` para ler `META_ACCESS_TOKEN` do vault
-- Query: `GET /act_ID/insights?level=ad&date_preset=lifetime` para ACTIVE e PAUSED separadamente (mesma logica da Edge Function)
-- Leads: usa `onsite_conversion.lead_grouped` (formularios reais, nao pixel)
-- Enriquece com dados de funil (MQL/SQL/OPP/WON) via RPC `get_ad_funnel_counts` e empreendimento de `squad_meta_ads`
+- **Busca dados via RPC** `get_historico_campanhas` — agrega snapshots de `squad_meta_ads` por ad_id (MAX spend/leads/impressions/clicks lifetime)
+- Funil (MQL/SQL/OPP/WON) via `get_planejamento_counts(-1, -1)` por empreendimento, distribuido proporcionalmente pelo spend share de cada ad
+- Enriquece com dados de funil (MQL/SQL/OPP/WON) via RPC `get_planejamento_counts(-1, -1)` — atribuicao proporcional por spend share dentro do empreendimento (nao existe link direto ad→deal)
 - **Drill-down 3 niveis:** Campanha → Conjunto de Anuncio → Criativo (clique para expandir)
 - Filtro por empreendimento, sort em todas as colunas, totais refletindo filtros
 - CPL com color coding: verde = abaixo da media, vermelho = acima

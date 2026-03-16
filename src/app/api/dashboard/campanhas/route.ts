@@ -33,8 +33,8 @@ export async function GET(req: NextRequest) {
     const monthPrefix = snapshotDate!.substring(0, 7);
     const startDate = `${monthPrefix}-01`;
 
-    // Queries paralelas: Meta Ads (último snapshot + todos do mês para max spend) + Funil + Contagens + WON
-    const [metaRes, metaAllRes, funnelRes, countsRes, crossWonRes] = await Promise.all([
+    // Queries paralelas: Meta Ads (último snapshot + todos do mês para max spend) + Contagens + WON
+    const [metaRes, metaAllRes, countsRes, crossWonRes] = await Promise.all([
       supabase
         .from("squad_meta_ads")
         .select("*")
@@ -45,14 +45,12 @@ export async function GET(req: NextRequest) {
         .from("squad_meta_ads")
         .select("ad_id, spend_month, leads_month")
         .gte("snapshot_date", startDate),
-      supabase.rpc("get_ad_funnel_counts", { start_date: startDate }),
       supabase.rpc("get_emp_counts_summary", { p_start_date: startDate }),
       supabase.rpc("get_ad_won_cross_emp"),
     ]);
 
     if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
     if (metaAllRes.error) console.warn(`Meta all-month query error (non-fatal): ${metaAllRes.error.message}`);
-    if (funnelRes.error) console.warn(`Funnel query error (non-fatal): ${funnelRes.error.message}`);
     if (countsRes.error) console.warn(`Counts RPC error (non-fatal): ${countsRes.error.message}`);
     if (crossWonRes.error) console.warn(`Cross-emp WON query error (non-fatal): ${crossWonRes.error.message}`);
 
@@ -108,17 +106,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Map<ad_id, {mql, sql, opp, won}> do funil rastreado (lifetime)
-    const adFunnel = new Map<string, { mql: number; sql: number; opp: number; won: number }>();
-    for (const row of funnelRes.data || []) {
-      adFunnel.set(row.ad_id, {
-        mql: Number(row.mql),
-        sql: Number(row.sql_count),
-        opp: Number(row.opp),
-        won: Number(row.won),
-      });
-    }
-
     // Map<ad_id, won_other> — WONs de ads que foram ganhos em outro empreendimento
     const crossWonMap = new Map<string, number>();
     for (const row of crossWonRes.data || []) {
@@ -171,12 +158,18 @@ export async function GET(req: NextRequest) {
         const nonPaidMql = paidOnly ? 0 : Math.max(counts.mql - metaLeads, 0);
         const leads = metaLeads + nonPaidMql;
 
-        // Ads detail com funil por ad
+        // Funil por ad: distribuição proporcional por spend share dentro do empreendimento
+        // (não existe link direto ad_id → deal no Pipedrive, atribuição via empreendimento)
+        const empLifetime = countsMapAll.get(emp) || { mql: 0, sql: 0, opp: 0, won: 0 };
         const adsDetail: MetaAdRow[] = empAds
           .map((r) => {
-            const funnel = adFunnel.get(r.ad_id) || { mql: 0, sql: 0, opp: 0, won: 0 };
             const sp = Number(r.spend_month || 0);
             const ld = r.leads_month || 0;
+            const spendShare = spend > 0 ? sp / spend : 0;
+            const adMql = Math.round(empLifetime.mql * spendShare);
+            const adSql = Math.round(empLifetime.sql * spendShare);
+            const adOpp = Math.round(empLifetime.opp * spendShare);
+            const adWon = Math.round(empLifetime.won * spendShare);
             return {
               ad_id: r.ad_id,
               campaign_name: r.campaign_name || "",
@@ -196,15 +189,15 @@ export async function GET(req: NextRequest) {
               severidade: r.severidade as "CRITICO" | "ALERTA" | "OK" | "OPORTUNIDADE",
               diagnostico: r.diagnostico || null,
               effective_status: (r.effective_status || "ACTIVE") as "ACTIVE" | "PAUSED",
-              mql: funnel.mql,
-              sql: funnel.sql,
-              opp: funnel.opp,
-              won: funnel.won,
+              mql: adMql,
+              sql: adSql,
+              opp: adOpp,
+              won: adWon,
               wonOutro: crossWonMap.get(r.ad_id) || 0,
-              cmql: funnel.mql > 0 ? Math.round((sp / funnel.mql) * 100) / 100 : 0,
-              csql: funnel.sql > 0 ? Math.round((sp / funnel.sql) * 100) / 100 : 0,
-              copp: funnel.opp > 0 ? Math.round((sp / funnel.opp) * 100) / 100 : 0,
-              cpw: funnel.won > 0 ? Math.round((sp / funnel.won) * 100) / 100 : 0,
+              cmql: adMql > 0 ? Math.round((sp / adMql) * 100) / 100 : 0,
+              csql: adSql > 0 ? Math.round((sp / adSql) * 100) / 100 : 0,
+              copp: adOpp > 0 ? Math.round((sp / adOpp) * 100) / 100 : 0,
+              cpw: adWon > 0 ? Math.round((sp / adWon) * 100) / 100 : 0,
             };
           })
           .sort((a, b) => {
@@ -289,10 +282,23 @@ export async function GET(req: NextRequest) {
       })
       .slice(0, 12);
 
+    // Spend total por emp (para distribuição proporcional no top10)
+    const empSpendMap = new Map<string, number>();
+    for (const ad of ads) {
+      const emp = ad.empreendimento;
+      empSpendMap.set(emp, (empSpendMap.get(emp) || 0) + Number(ad.spend_month || 0));
+    }
+
     const top10: MetaAdRow[] = problemAds.map((r) => {
-      const funnel = adFunnel.get(r.ad_id) || { mql: 0, sql: 0, opp: 0, won: 0 };
       const sp = Number(r.spend_month || 0);
       const ld = r.leads_month || 0;
+      const empLife = countsMapAll.get(r.empreendimento) || { mql: 0, sql: 0, opp: 0, won: 0 };
+      const empSp = empSpendMap.get(r.empreendimento) || 0;
+      const share = empSp > 0 ? sp / empSp : 0;
+      const adMql = Math.round(empLife.mql * share);
+      const adSql = Math.round(empLife.sql * share);
+      const adOpp = Math.round(empLife.opp * share);
+      const adWon = Math.round(empLife.won * share);
       return {
         ad_id: r.ad_id,
         campaign_name: r.campaign_name || "",
@@ -312,15 +318,15 @@ export async function GET(req: NextRequest) {
         severidade: r.severidade as "CRITICO" | "ALERTA" | "OK" | "OPORTUNIDADE",
         diagnostico: r.diagnostico || null,
         effective_status: (r.effective_status || "ACTIVE") as "ACTIVE" | "PAUSED",
-        mql: funnel.mql,
-        sql: funnel.sql,
-        opp: funnel.opp,
-        won: funnel.won,
+        mql: adMql,
+        sql: adSql,
+        opp: adOpp,
+        won: adWon,
         wonOutro: crossWonMap.get(r.ad_id) || 0,
-        cmql: funnel.mql > 0 ? Math.round((sp / funnel.mql) * 100) / 100 : 0,
-        csql: funnel.sql > 0 ? Math.round((sp / funnel.sql) * 100) / 100 : 0,
-        copp: funnel.opp > 0 ? Math.round((sp / funnel.opp) * 100) / 100 : 0,
-        cpw: funnel.won > 0 ? Math.round((sp / funnel.won) * 100) / 100 : 0,
+        cmql: adMql > 0 ? Math.round((sp / adMql) * 100) / 100 : 0,
+        csql: adSql > 0 ? Math.round((sp / adSql) * 100) / 100 : 0,
+        copp: adOpp > 0 ? Math.round((sp / adOpp) * 100) / 100 : 0,
+        cpw: adWon > 0 ? Math.round((sp / adWon) * 100) / 100 : 0,
       };
     });
 

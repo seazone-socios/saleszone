@@ -10,21 +10,33 @@ export async function GET() {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const supabase = createClient(supabaseUrl, anonKey);
 
+    // Buscar dados de ads + funil por empreendimento (lifetime, sem filtro de data)
     const [historicoRes, funnelRes] = await Promise.all([
       supabase.rpc("get_historico_campanhas"),
-      supabase.rpc("get_ad_funnel_counts", { start_date: "2020-01-01" }),
+      supabase.rpc("get_planejamento_counts", { months_back: 0, days_back: -1 }),
     ]);
 
     if (historicoRes.error) throw new Error(`RPC error: ${historicoRes.error.message}`);
+    if (funnelRes.error) console.warn(`Funnel RPC error (non-fatal): ${funnelRes.error.message}`);
 
-    const adFunnel = new Map<string, { mql: number; sql: number; opp: number; won: number }>();
+    // Agregar funil por empreendimento (somar todos os meses)
+    const empFunnel = new Map<string, { mql: number; sql: number; opp: number; won: number }>();
     for (const row of funnelRes.data || []) {
-      adFunnel.set(row.ad_id, {
-        mql: Number(row.mql) || 0,
-        sql: Number(row.sql_count) || 0,
-        opp: Number(row.opp) || 0,
-        won: Number(row.won) || 0,
-      });
+      const emp = row.empreendimento;
+      const cur = empFunnel.get(emp) || { mql: 0, sql: 0, opp: 0, won: 0 };
+      cur.mql += Number(row.mql) || 0;
+      cur.sql += Number(row.sql) || 0;
+      cur.opp += Number(row.opp) || 0;
+      cur.won += Number(row.won) || 0;
+      empFunnel.set(emp, cur);
+    }
+
+    // Calcular spend total por empreendimento (para distribuição proporcional)
+    const empSpend = new Map<string, number>();
+    for (const row of historicoRes.data || []) {
+      const emp = row.empreendimento || "";
+      const spend = Number(row.spend) || 0;
+      empSpend.set(emp, (empSpend.get(emp) || 0) + spend);
     }
 
     const ads: HistoricoAdRow[] = [];
@@ -33,18 +45,23 @@ export async function GET() {
       const leads = Number(row.leads) || 0;
       const impressions = Number(row.impressions) || 0;
       const clicks = Number(row.clicks) || 0;
-      const funnel = adFunnel.get(row.ad_id);
-      const mql = funnel?.mql ?? 0;
-      const sql = funnel?.sql ?? 0;
-      const opp = funnel?.opp ?? 0;
-      const won = funnel?.won ?? 0;
+      const emp = row.empreendimento || "";
+
+      // Atribuir funil proporcionalmente pelo share de spend dentro do empreendimento
+      const funnel = empFunnel.get(emp);
+      const totalEmpSpend = empSpend.get(emp) || 0;
+      const spendShare = totalEmpSpend > 0 ? spend / totalEmpSpend : 0;
+      const mql = funnel ? Math.round(funnel.mql * spendShare) : 0;
+      const sql = funnel ? Math.round(funnel.sql * spendShare) : 0;
+      const opp = funnel ? Math.round(funnel.opp * spendShare) : 0;
+      const won = funnel ? Math.round(funnel.won * spendShare) : 0;
 
       ads.push({
         adId: row.ad_id,
         adName: row.ad_name || "",
         adsetName: row.adset_name || "",
         campaignName: row.campaign_name || "",
-        empreendimento: row.empreendimento || "",
+        empreendimento: emp,
         effectiveStatus: row.effective_status || "PAUSED",
         spend,
         leads,
