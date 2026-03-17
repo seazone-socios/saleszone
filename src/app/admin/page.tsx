@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X, UserPlus, Shield, Edit2, UserX, Trash2, BarChart3 } from "lucide-react";
+import { ArrowLeft, Plus, X, UserPlus, Shield, Edit2, UserX, Trash2, BarChart3, Link2, Copy, Check } from "lucide-react";
 import { T } from "@/lib/constants";
 import type { UserProfile, UserInvitation, UserRole } from "@/lib/types";
 
@@ -21,6 +21,9 @@ export default function AdminPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<UserRole>("operador");
+  const [inviteLinks, setInviteLinks] = useState<Array<{ id: string; token: string; role: string; created_by: string; max_uses: number; used_count: number; active: boolean; created_at: string; expires_at: string }>>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [generatingLink, setGeneratingLink] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -51,7 +54,52 @@ export default function AdminPage() {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchData(); fetchAnalytics(); }, [fetchData, fetchAnalytics]);
+  const fetchInviteLinks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/invite-links");
+      if (res.ok) {
+        const data = await res.json();
+        setInviteLinks(data.links || []);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchData(); fetchAnalytics(); fetchInviteLinks(); }, [fetchData, fetchAnalytics, fetchInviteLinks]);
+
+  const handleGenerateLink = async () => {
+    setGeneratingLink(true);
+    try {
+      const res = await fetch("/api/admin/invite-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "operador", max_uses: 0, expires_in_days: 7 }),
+      });
+      if (!res.ok) throw new Error("Erro ao gerar link");
+      fetchInviteLinks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido");
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const handleDeactivateLink = async (id: string) => {
+    try {
+      await fetch("/api/admin/invite-links", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      fetchInviteLinks();
+    } catch {}
+  };
+
+  const copyLink = (token: string, id: string) => {
+    const url = `${window.location.origin}/invite?token=${token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const handleInvite = async () => {
     if (!formEmail || !formName) return;
@@ -411,6 +459,112 @@ export default function AdminPage() {
                 <tr>
                   <td colSpan={5} style={{ ...tdStyle, textAlign: "center", color: T.mutedFg }}>
                     Nenhum convite pendente
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Links de Convite */}
+        <div
+          style={{
+            backgroundColor: T.bg,
+            borderRadius: "12px",
+            border: `1px solid ${T.border}`,
+            boxShadow: T.elevSm,
+            marginTop: "20px",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: "8px" }}>
+            <Link2 size={16} color={T.azul600} />
+            <h2 style={{ fontSize: "15px", fontWeight: 600, color: T.fg, margin: 0 }}>
+              Links de Convite
+            </h2>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={handleGenerateLink}
+              disabled={generatingLink}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: "6px",
+                padding: "6px 14px", borderRadius: "8px", border: "none",
+                backgroundColor: generatingLink ? T.cinza300 : T.azul600,
+                color: "#FFF", fontSize: "12px", fontWeight: 500, cursor: generatingLink ? "not-allowed" : "pointer",
+              }}
+            >
+              <Plus size={12} /> {generatingLink ? "Gerando..." : "Gerar Link"}
+            </button>
+          </div>
+          <div style={{ padding: "12px 16px", fontSize: "12px", color: T.mutedFg, borderBottom: `1px solid ${T.cinza50}` }}>
+            Links válidos por 7 dias. Qualquer pessoa com email @seazone.com.br pode usar.
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Link</th>
+                <th style={thStyle}>Papel</th>
+                <th style={thStyle}>Criado por</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Usos</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Expira em</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inviteLinks.map((link) => {
+                const isExpired = new Date(link.expires_at) < new Date();
+                const isActive = link.active && !isExpired;
+                return (
+                  <tr key={link.id}>
+                    <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "11px", color: T.mutedFg }}>
+                      ...{link.token.slice(-8)}
+                    </td>
+                    <td style={tdStyle}>{roleBadge(link.role as UserRole)}</td>
+                    <td style={{ ...tdStyle, color: T.mutedFg, fontSize: "12px" }}>{link.created_by.split("@")[0]}</td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {link.used_count}{link.max_uses > 0 ? `/${link.max_uses}` : ""}
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: "2px 10px", borderRadius: "9999px", fontSize: "11px", fontWeight: 600,
+                        backgroundColor: isActive ? T.verde50 : T.vermelho50,
+                        color: isActive ? T.verde700 : T.destructive,
+                      }}>
+                        {isActive ? "Ativo" : isExpired ? "Expirado" : "Desativado"}
+                      </span>
+                    </td>
+                    <td style={{ ...tdStyle, color: T.mutedFg, fontSize: "12px" }}>{formatDate(link.expires_at)}</td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                        {isActive && (
+                          <>
+                            <button
+                              onClick={() => copyLink(link.token, link.id)}
+                              style={{ ...btnStyle, color: copiedId === link.id ? T.verde700 : T.azul600, borderColor: copiedId === link.id ? T.verde50 : T.azul50 }}
+                              title="Copiar link"
+                            >
+                              {copiedId === link.id ? <Check size={12} /> : <Copy size={12} />}
+                              {copiedId === link.id ? "Copiado" : "Copiar"}
+                            </button>
+                            <button
+                              onClick={() => handleDeactivateLink(link.id)}
+                              style={{ ...btnStyle, color: T.destructive, borderColor: T.vermelho100 }}
+                              title="Desativar"
+                            >
+                              <X size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {inviteLinks.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: "center", color: T.mutedFg }}>
+                    Nenhum link gerado
                   </td>
                 </tr>
               )}
