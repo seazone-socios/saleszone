@@ -55,7 +55,7 @@ export async function GET() {
     const d90Str = d90.toISOString().substring(0, 10);
 
     // --- Queries paralelas ---
-    const [openDeals, hist90d, wonThisMonth, metasRows] = await Promise.all([
+    const [openDeals, hist90d, won90d, wonThisMonth, metasRows] = await Promise.all([
       // 1. Deals abertos, canal marketing
       paginate((o, ps) =>
         supabase
@@ -78,7 +78,18 @@ export async function GET() {
           .gte("add_time", d90Str)
           .range(o, o + ps - 1),
       ),
-      // 3. WON do mês corrente
+      // 3. WON nos últimos 90d (por won_time) para leadtime — inclui deals antigos que fecharam recentemente
+      paginate((o, ps) =>
+        supabase
+          .from("squad_deals")
+          .select("deal_id, add_time, won_time, max_stage_order")
+          .eq("status", "won")
+          .eq("is_marketing", true)
+          .not("empreendimento", "is", null)
+          .gte("won_time", d90Str)
+          .range(o, o + ps - 1),
+      ),
+      // 4. WON do mês corrente
       paginate((o, ps) =>
         supabase
           .from("squad_deals")
@@ -89,7 +100,7 @@ export async function GET() {
           .lt("won_time", mesFim)
           .range(o, o + ps - 1),
       ),
-      // 4. Metas WON do mês
+      // 5. Metas WON do mês
       supabase
         .from("squad_metas")
         .select("squad_id, tab, value")
@@ -125,13 +136,13 @@ export async function GET() {
     }
 
     // --- Leadtime mediano por etapa (dias da etapa até WON) ---
-    // Para deals WON nos últimos 90d: ciclo total = won_time - add_time
-    // Tempo restante da etapa X ≈ ciclo × (14 - X) / 13
+    // Usa deals que FECHARAM nos últimos 90d (won_time >= 90d), não add_time
+    // Ciclo total = won_time - add_time. Tempo restante da etapa X ≈ ciclo × (14 - X) / 13
     const leadtimeSamples: Record<number, number[]> = {};
     for (const so of ALL_STAGES) leadtimeSamples[so] = [];
 
-    for (const d of hist90d) {
-      if (d.status !== "won" || !d.add_time || !d.won_time) continue;
+    for (const d of won90d) {
+      if (!d.add_time || !d.won_time) continue;
       const cycleDays = (new Date(d.won_time).getTime() - new Date(d.add_time).getTime()) / (1000 * 60 * 60 * 24);
       if (cycleDays <= 0) continue;
       const maxSO = d.max_stage_order || 14;
