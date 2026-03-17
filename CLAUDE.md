@@ -462,13 +462,15 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
 - **Lógica:**
   1. **Já Ganhos:** deals WON no mês corrente (`status=won`, `won_time >= mes_inicio`)
   2. **Pipeline:** deals abertos por etapa × taxa de conversão histórica 90d por etapa
-  3. **Taxa conversão por etapa:** de todos os deals que passaram pela etapa X (`max_stage_order >= X`) nos últimos 90d, qual % virou WON
-  4. **Forecast = Já Ganhos + Pipeline**
+  3. **Taxa conversão por etapa:** de todos os deals que passaram pela etapa X (`max_stage_order >= X`) nos últimos 90d (filtro `add_time >= 90d`), qual % virou WON. Exclui `lost_reason = 'Duplicado/Erro'` em JS (não no Supabase, por causa do bug do `neq` com NULLs)
+  4. **Leadtime por etapa:** tempo médio (média, não mediana — mais conservador) da etapa até WON. Usa deals que FECHARAM nos últimos 90d (`won_time >= 90d`, query separada). Fórmula: `ciclo_total × (14 - stage_order) / 13`
+  5. **Forecast = Já Ganhos + Pipeline**
 - **Ranges:** pessimista (pipeline ×0.7), esperado (×1.0), otimista (×1.3)
 - **Breakdown:** por squad (expansível para closers) com meta e % meta
 - **Metas:** lê de `squad_metas` (tab=won, month=mês atual), divide por número de closers no squad
-- **View:** cards resumo (Já Ganhos, Pipeline, Forecast Total), range bar visual com linha de meta, tabela pipeline por etapa, tabela squad/closer
+- **View:** cards resumo (Já Ganhos, Pipeline, Forecast Total), range bar visual com linha de meta, tabela pipeline por etapa (com coluna Leadtime → WON), tabela squad/closer
 - **Sync:** usa `["deals"]` (depende de `squad_deals` atualizado)
+- **CUIDADO queries de leadtime vs conversão:** conversão usa `add_time >= 90d` (deals criados no período). Leadtime usa `won_time >= 90d` (deals que fecharam no período, independente de quando foram criados). Misturar os filtros gera leadtimes artificialmente curtos porque `add_time >= 90d` só pega deals recentes com ciclos rápidos
 - **CUIDADO neq + NULL:** Supabase `.neq("campo", "valor")` exclui rows onde campo é NULL. Para filtrar `lost_reason != 'Duplicado/Erro'` sem excluir NULLs, filtrar em JS com `if (d.lost_reason === "Duplicado/Erro") continue`
 - **CUIDADO datas UTC:** `new Date("2026-03-01")` em BRT (UTC-3) vira 28/fev 21h. Usar `new Date("2026-03-01T12:00:00")` para exibição de mês
 
