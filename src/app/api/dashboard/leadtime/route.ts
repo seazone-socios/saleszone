@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { V_COLS, SQUAD_V_MAP } from "@/lib/constants";
-import type { LeadtimeData, LeadtimeStageRow } from "@/lib/types";
+import type { LeadtimeData, LeadtimeStageRow, LeadtimeDealRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -171,34 +171,67 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // --- By closer ---
-    const closerWonMap: Record<string, number[]> = {};
-    const closerOpenMap: Record<string, number> = {};
+    // --- By closer (with deal-level detail) ---
+    const closerWonCycles: Record<string, number[]> = {};
+    const closerDeals: Record<string, LeadtimeDealRow[]> = {};
 
     for (const d of wonDeals) {
       const owner = d.owner_name || "Sem dono";
-      if (!closerWonMap[owner]) closerWonMap[owner] = [];
+      if (!closerWonCycles[owner]) closerWonCycles[owner] = [];
+      if (!closerDeals[owner]) closerDeals[owner] = [];
       if (d.add_time && d.won_time) {
         const days = (new Date(d.won_time).getTime() - new Date(d.add_time).getTime()) / (1000 * 60 * 60 * 24);
-        if (days > 0) closerWonMap[owner].push(days);
+        if (days > 0) {
+          closerWonCycles[owner].push(days);
+          closerDeals[owner].push({
+            deal_id: d.deal_id,
+            title: d.title || `Deal #${d.deal_id}`,
+            empreendimento: d.empreendimento || "",
+            stageName: STAGE_NAMES[d.stage_order] || `Stage ${d.stage_order}`,
+            stageOrder: d.stage_order || 0,
+            add_time: d.add_time,
+            won_time: d.won_time,
+            cycleDays: Math.round(days * 10) / 10,
+            status: "won",
+            link: `https://seazone-fd92b9.pipedrive.com/deal/${d.deal_id}`,
+          });
+        }
       }
     }
 
     for (const d of openDeals) {
       const owner = d.owner_name || "Sem dono";
-      closerOpenMap[owner] = (closerOpenMap[owner] || 0) + 1;
+      if (!closerDeals[owner]) closerDeals[owner] = [];
+      const ageDays = d.add_time
+        ? (now.getTime() - new Date(d.add_time).getTime()) / (1000 * 60 * 60 * 24)
+        : 0;
+      closerDeals[owner].push({
+        deal_id: d.deal_id,
+        title: d.title || `Deal #${d.deal_id}`,
+        empreendimento: d.empreendimento || "",
+        stageName: STAGE_NAMES[d.stage_order] || `Stage ${d.stage_order}`,
+        stageOrder: d.stage_order || 0,
+        add_time: d.add_time || "",
+        won_time: null,
+        cycleDays: Math.round(ageDays * 10) / 10,
+        status: "open",
+        link: `https://seazone-fd92b9.pipedrive.com/deal/${d.deal_id}`,
+      });
     }
 
-    // Only include known closers (V_COLS)
+    // Only include known closers (V_COLS), sort deals by cycleDays desc
     const byCloser = V_COLS.map((name) => {
-      const wonArr = closerWonMap[name] || [];
+      const wonArr = closerWonCycles[name] || [];
+      const deals = (closerDeals[name] || []).sort((a, b) => b.cycleDays - a.cycleDays);
+      const openCount = deals.filter((d) => d.status === "open").length;
       return {
         name,
         squadId: getSquadId(name),
         avgCycleDays: Math.round(avg(wonArr) * 10) / 10,
         medianCycleDays: Math.round(median(wonArr) * 10) / 10,
         wonDeals: wonArr.length,
-        openDeals: closerOpenMap[name] || 0,
+        openDeals: openCount,
+        deals,
       };
     });
 

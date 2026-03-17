@@ -652,6 +652,19 @@ export interface LeadtimeStageRow {
   } | null;
 }
 
+export interface LeadtimeDealRow {
+  deal_id: number;
+  title: string;
+  empreendimento: string;
+  stageName: string;
+  stageOrder: number;
+  add_time: string;
+  won_time: string | null;
+  cycleDays: number;       // won: won_time - add_time; open: now - add_time
+  status: "won" | "open";
+  link: string;
+}
+
 export interface LeadtimeData {
   avgCycleDays: number;
   medianCycleDays: number;
@@ -666,6 +679,7 @@ export interface LeadtimeData {
     medianCycleDays: number;
     wonDeals: number;
     openDeals: number;
+    deals: LeadtimeDealRow[];
   }>;
 }
 

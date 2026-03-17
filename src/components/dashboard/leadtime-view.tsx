@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { T, SQUAD_COLORS } from "@/lib/constants";
-import type { LeadtimeData, LeadtimeStageRow } from "@/lib/types";
+import type { LeadtimeData, LeadtimeStageRow, LeadtimeDealRow } from "@/lib/types";
 
 interface Props {
   data: LeadtimeData | null;
@@ -170,48 +171,239 @@ export function LeadtimeView({ data, loading, daysBack, onDaysChange }: Props) {
       </div>
 
       {/* Leadtime por Closer */}
-      <div style={{ backgroundColor: "#FFF", border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: T.cinza600, textTransform: "uppercase", marginBottom: "12px" }}>Leadtime por Closer</div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Closer</th>
-                <th style={thStyle}>Squad</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Media (dias)</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Mediana</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Deals Ganhos</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Abertos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.byCloser.map((c) => {
-                const sqColor = SQUAD_COLORS[c.squadId] || T.cinza600;
-                return (
-                  <tr key={c.name}>
-                    <td style={tdStyle}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: sqColor, display: "inline-block" }} />
-                        {c.name}
-                      </span>
-                    </td>
-                    <td style={{ ...tdStyle, color: T.cinza600 }}>{c.squadId}</td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: daysColor(c.avgCycleDays, data.avgCycleDays) }}>
-                      {c.wonDeals > 0 ? fmt(c.avgCycleDays) : "-"}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      {c.wonDeals > 0 ? fmt(c.medianCycleDays) : "-"}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>{c.wonDeals}</td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>{c.openDeals}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <CloserSection byCloser={data.byCloser} globalAvg={data.avgCycleDays} />
+    </div>
+  );
+}
+
+type DealFilter = "all" | "open";
+
+function CloserSection({ byCloser, globalAvg }: { byCloser: LeadtimeData["byCloser"]; globalAvg: number }) {
+  const [expandedClosers, setExpandedClosers] = useState<Set<string>>(new Set());
+  const [dealFilter, setDealFilter] = useState<DealFilter>("all");
+
+  const toggleCloser = (name: string) => {
+    setExpandedClosers((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  return (
+    <div style={{ backgroundColor: "#FFF", border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: T.cinza600, textTransform: "uppercase" }}>Leadtime por Closer</div>
+        <div style={{ display: "flex", gap: "2px", backgroundColor: T.cinza50, borderRadius: "9999px", padding: "3px", border: `1px solid ${T.border}` }}>
+          <button
+            onClick={() => setDealFilter("all")}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "9999px",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "11px",
+              fontWeight: 500,
+              transition: "all 0.15s",
+              letterSpacing: "0.02em",
+              backgroundColor: dealFilter === "all" ? T.azul600 : "transparent",
+              color: dealFilter === "all" ? "#FFF" : T.cinza600,
+            }}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setDealFilter("open")}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "9999px",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "11px",
+              fontWeight: 500,
+              transition: "all 0.15s",
+              letterSpacing: "0.02em",
+              backgroundColor: dealFilter === "open" ? T.azul600 : "transparent",
+              color: dealFilter === "open" ? "#FFF" : T.cinza600,
+            }}
+          >
+            Abertos
+          </button>
         </div>
       </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Closer</th>
+              <th style={thStyle}>Squad</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Media (dias)</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Mediana</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Deals Ganhos</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Abertos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byCloser.map((c) => (
+              <CloserRow
+                key={c.name}
+                closer={c}
+                globalAvg={globalAvg}
+                expanded={expandedClosers.has(c.name)}
+                onToggle={() => toggleCloser(c.name)}
+                dealFilter={dealFilter}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+function CloserRow({
+  closer,
+  globalAvg,
+  expanded,
+  onToggle,
+  dealFilter,
+}: {
+  closer: LeadtimeData["byCloser"][number];
+  globalAvg: number;
+  expanded: boolean;
+  onToggle: () => void;
+  dealFilter: DealFilter;
+}) {
+  const sqColor = SQUAD_COLORS[closer.squadId] || T.cinza600;
+  const filteredDeals = dealFilter === "open"
+    ? closer.deals.filter((d) => d.status === "open")
+    : closer.deals;
+
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        style={{ cursor: "pointer", backgroundColor: expanded ? T.cinza50 : "transparent" }}
+        onMouseEnter={(e) => { if (!expanded) e.currentTarget.style.backgroundColor = T.cinza50; }}
+        onMouseLeave={(e) => { if (!expanded) e.currentTarget.style.backgroundColor = "transparent"; }}
+      >
+        <td style={tdStyle}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ color: T.cinza400, fontSize: "10px" }}>{expanded ? "▼" : "▶"}</span>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: sqColor, display: "inline-block" }} />
+            <span style={{ fontWeight: 600 }}>{closer.name}</span>
+          </span>
+        </td>
+        <td style={{ ...tdStyle, color: T.cinza600 }}>{closer.squadId}</td>
+        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: daysColor(closer.avgCycleDays, globalAvg) }}>
+          {closer.wonDeals > 0 ? fmt(closer.avgCycleDays) : "-"}
+        </td>
+        <td style={{ ...tdStyle, textAlign: "right" }}>
+          {closer.wonDeals > 0 ? fmt(closer.medianCycleDays) : "-"}
+        </td>
+        <td style={{ ...tdStyle, textAlign: "right" }}>{closer.wonDeals}</td>
+        <td style={{ ...tdStyle, textAlign: "right" }}>{closer.openDeals}</td>
+      </tr>
+      {expanded && filteredDeals.length > 0 && (
+        <tr>
+          <td colSpan={6} style={{ padding: 0 }}>
+            <DealTable deals={filteredDeals} />
+          </td>
+        </tr>
+      )}
+      {expanded && filteredDeals.length === 0 && (
+        <tr>
+          <td colSpan={6} style={{ ...tdStyle, paddingLeft: "36px", color: T.cinza400, fontSize: "12px" }}>
+            Nenhum deal {dealFilter === "open" ? "aberto" : ""} encontrado
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function DealTable({ deals }: { deals: LeadtimeDealRow[] }) {
+  const dealThStyle: React.CSSProperties = {
+    fontSize: "10px",
+    fontWeight: 600,
+    color: T.cinza600,
+    textTransform: "uppercase",
+    padding: "6px 10px",
+    textAlign: "left",
+    borderBottom: `1px solid ${T.border}`,
+    whiteSpace: "nowrap",
+    backgroundColor: T.azul50 + "66",
+  };
+  const dealTdStyle: React.CSSProperties = {
+    fontSize: "12px",
+    color: T.fg,
+    padding: "6px 10px",
+    borderBottom: `1px solid ${T.cinza100}`,
+    fontVariantNumeric: "tabular-nums",
+    backgroundColor: T.azul50 + "33",
+  };
+
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", marginLeft: "0" }}>
+      <thead>
+        <tr>
+          <th style={{ ...dealThStyle, paddingLeft: "36px" }}>Deal</th>
+          <th style={dealThStyle}>Empreendimento</th>
+          <th style={dealThStyle}>Etapa</th>
+          <th style={dealThStyle}>Status</th>
+          <th style={{ ...dealThStyle, textAlign: "right" }}>Dias</th>
+          <th style={dealThStyle}>Criacao</th>
+        </tr>
+      </thead>
+      <tbody>
+        {deals.map((d) => (
+          <tr key={d.deal_id}>
+            <td style={{ ...dealTdStyle, paddingLeft: "36px" }}>
+              <a
+                href={d.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: T.azul600, textDecoration: "none", fontWeight: 500 }}
+                title={d.title}
+              >
+                {d.title.length > 40 ? d.title.substring(0, 40) + "..." : d.title}
+              </a>
+            </td>
+            <td style={{ ...dealTdStyle, fontSize: "11px", color: T.cinza600 }}>
+              {d.empreendimento}
+            </td>
+            <td style={{ ...dealTdStyle, fontSize: "11px", color: T.cinza600 }}>
+              {d.stageName}
+            </td>
+            <td style={dealTdStyle}>
+              <span style={{
+                display: "inline-block",
+                padding: "1px 7px",
+                borderRadius: "9999px",
+                fontSize: "10px",
+                fontWeight: 600,
+                backgroundColor: d.status === "won" ? "#f0fdf4" : "#eff6ff",
+                color: d.status === "won" ? "#15803D" : T.azul600,
+              }}>
+                {d.status === "won" ? "Ganho" : "Aberto"}
+              </span>
+            </td>
+            <td style={{
+              ...dealTdStyle,
+              textAlign: "right",
+              fontWeight: 600,
+              color: d.cycleDays >= 90 ? "#E7000B" : d.cycleDays >= 30 ? "#92400E" : "#15803D",
+            }}>
+              {fmt(d.cycleDays)}
+            </td>
+            <td style={{ ...dealTdStyle, fontSize: "11px", color: T.cinza600 }}>
+              {d.add_time ? new Date(d.add_time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "-"}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
