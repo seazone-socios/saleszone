@@ -449,6 +449,15 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
 - Deploy: conta do Fernando (fernandopereira-ship-it). Colaboradores precisam ser adicionados pelo owner
 - Auto-deploy via push para branch main no GitHub
 
+## Admin — Gerenciamento de Usuarios
+- **Rota:** `/admin` (restrito a role `diretor`)
+- **APIs:** `/api/admin/users` (profiles + invitations), `/api/admin/invite-links` (links), `/api/admin/analytics` (acessos)
+- **Convite por email:** diretor preenche email+nome+papel → cria `user_invitation` → email via Edge Function → usuario faz login Google → middleware auto-cria `user_profile`
+- **Convite por link:** diretor gera link → copia URL `/invite?token=X` → compartilha → usuario clica → pagina salva token em cookie → OAuth Google → middleware valida token (ativo + nao expirado + dentro do limite de usos), auto-cria `user_profile`, incrementa `used_count`, limpa cookie
+- **Middleware (`src/lib/supabase/middleware.ts`):** checagem: (1) profile ativo → OK, (2) inativo → bloqueia, (3) convite email → auto-provision, (4) invite link cookie → auto-provision, (5) nada → bloqueia
+- **Rota `/invite` excluida do middleware** (matcher em `src/middleware.ts`) para carregar sem auth e setar cookie
+- **Analytics:** heartbeat a cada 3min (`page.tsx` useEffect). Admin mostra acessos 7d/30d, sessao media, tempo total 7d, timeline recente
+
 ## Diagnostico Vendas (Leadtime de Follow-up)
 - Aba dentro do dropdown "Perf. Vendas" no header
 - **API:** `/api/dashboard/diagnostico-vendas` — busca deals abertos de `squad_deals`, filtra pelos 5 closers (V_COLS)
