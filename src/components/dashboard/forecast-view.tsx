@@ -151,6 +151,7 @@ export function ForecastView({ data, loading }: Props) {
                 <th style={thStyle}>Etapa</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Deals Abertos</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Conv. → WON (90d)</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Leadtime → WON</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>WON Esperado</th>
               </tr>
             </thead>
@@ -160,12 +161,14 @@ export function ForecastView({ data, loading }: Props) {
                   <td style={tdStyle}>{s.stage}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{s.openDeals}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{(s.convRate * 100).toFixed(1)}%</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: T.cinza600 }}>{s.leadtimeDays}d</td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{fmt(s.expectedWon)}</td>
                 </tr>
               ))}
               <tr style={{ backgroundColor: T.cinza50 }}>
                 <td style={{ ...tdStyle, fontWeight: 700 }}>Total</td>
                 <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{totalOpenDeals}</td>
+                <td style={tdStyle} />
                 <td style={tdStyle} />
                 <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(data.pipeline)}</td>
               </tr>

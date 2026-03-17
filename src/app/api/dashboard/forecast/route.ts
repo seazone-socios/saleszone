@@ -71,7 +71,7 @@ export async function GET() {
       paginate((o, ps) =>
         supabase
           .from("squad_deals")
-          .select("deal_id, status, stage_order, max_stage_order, lost_reason")
+          .select("deal_id, status, stage_order, max_stage_order, lost_reason, add_time, won_time")
           .eq("is_marketing", true)
           .not("empreendimento", "is", null)
           .in("status", ["won", "lost"])
@@ -124,6 +124,38 @@ export async function GET() {
       convRate[so] = reachedStage[so] > 0 ? wonFromStage[so] / reachedStage[so] : 0;
     }
 
+    // --- Leadtime mediano por etapa (dias da etapa até WON) ---
+    // Para deals WON nos últimos 90d: ciclo total = won_time - add_time
+    // Tempo restante da etapa X ≈ ciclo × (14 - X) / 13
+    const leadtimeSamples: Record<number, number[]> = {};
+    for (const so of ALL_STAGES) leadtimeSamples[so] = [];
+
+    for (const d of hist90d) {
+      if (d.status !== "won" || !d.add_time || !d.won_time) continue;
+      const cycleDays = (new Date(d.won_time).getTime() - new Date(d.add_time).getTime()) / (1000 * 60 * 60 * 24);
+      if (cycleDays <= 0) continue;
+      const maxSO = d.max_stage_order || 14;
+      for (const so of ALL_STAGES) {
+        if (maxSO >= so) {
+          // Tempo restante estimado da etapa X = ciclo × fração restante do pipeline
+          const remainingDays = cycleDays * (14 - so) / 13;
+          leadtimeSamples[so].push(Math.max(0, remainingDays));
+        }
+      }
+    }
+
+    function median(arr: number[]): number {
+      if (arr.length === 0) return 0;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    const leadtimeByStage: Record<number, number> = {};
+    for (const so of ALL_STAGES) {
+      leadtimeByStage[so] = Math.round(median(leadtimeSamples[so]));
+    }
+
     // --- Deals abertos por etapa ---
     const openByStage: Record<number, number> = {};
     for (const d of openDeals) {
@@ -140,7 +172,7 @@ export async function GET() {
         stageOrder: so,
         openDeals: deals,
         convRate: rate,
-        leadtimeDays: 0,
+        leadtimeDays: leadtimeByStage[so] || 0,
         expectedWon: Math.round(deals * rate * 10) / 10,
       };
     });
@@ -217,7 +249,7 @@ export async function GET() {
           stageOrder: so,
           openDeals: deals,
           convRate: rate,
-          leadtimeDays: 0,
+          leadtimeDays: leadtimeByStage[so] || 0,
           expectedWon: Math.round(deals * rate * 10) / 10,
         };
       });
