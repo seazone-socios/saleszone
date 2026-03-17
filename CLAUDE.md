@@ -130,6 +130,8 @@ supabase/
 | `squad_monthly_counts` | Contagens mensais acumuladas por tab x empreendimento (rollup de squad_daily_counts). Populada pelo modo `monthly-rollup`. |
 | `squad_orcamento` | Orcamento mensal global SZI. PK = `mes` (YYYY-MM). Input manual via aba Orcamento. |
 | `squad_orcamento_log` | Log de alteracoes de orcamento. PK = `(date, empreendimento)`. Registrado quando gasto diario real = budget recomendado. Colunas: budget_recomendado, budget_real, tipo (Escalar/Manter/Otimizar/Reduzir), explicacao. |
+| `user_access_log` | Log de acessos ao dashboard. Colunas: email, full_name, accessed_at, ip_address, session_id (UUID), last_heartbeat (atualizado a cada 3min). RPCs: `log_user_access(p_email, p_full_name, p_session_id)`, `update_session_heartbeat(p_session_id)`, `get_user_access_analytics()` (aggregated), `get_recent_accesses(p_limit)`. Chamado do `page.tsx` useEffect ao carregar dashboard. |
+| `user_profiles` | Perfis de usuario. Colunas: id, email, full_name, role (operador/diretor), status, invited_by, created_at, updated_at. |
 | `squad_deals` | Banco centralizado de deals Pipedrive (1 row por deal). PK = `deal_id`. Colunas: status, stage_id, canal, empreendimento, is_marketing (gerada), max_stage_order (Flow API), flow_fetched, lost_reason, rd_source, last_activity_date, next_activity_date, owner_name, preseller_name. RPC `get_planejamento_counts` usa essa tabela. Filtros RPC: `is_marketing=true`, `rd_source ILIKE '%paga%'`, `lost_reason <> 'Duplicado/Erro'`. |
 
 ## Edge Functions
@@ -324,6 +326,7 @@ Componente reutilizavel `MediaFilterToggle` em `ui.tsx`. Type `MediaFilter` cent
 - `tsconfig.json` DEVE excluir `supabase/` (Deno URL imports quebram build Next.js no Vercel)
 - **LIMITE 1000 ROWS:** Supabase retorna no maximo 1000 rows por request (queries `.from()` E `.rpc()`). Para tabelas/RPCs com mais de 1000 rows, DEVE paginar com `.range(offset, offset+999)` em loop. Exemplo: `get_historico_campanhas` retorna 1776 ads — sem paginacao, 776 ads ficam de fora silenciosamente (sem erro). `.limit(N)` NAO funciona para aumentar alem de 1000 em RPCs — usar `.range()` obrigatoriamente
 - **RPCs inexistentes:** `get_ad_funnel_counts` e `get_ad_won_cross_emp` NAO existem no banco (planejadas mas nunca criadas). Chamar RPCs inexistentes nao da throw — o erro e silenciado se checado com `if (res.error) console.warn(...)`. Sempre verificar se a RPC existe nas migrations antes de usa-la
+- **CUIDADO migrations fantasma:** `supabase db push` pode marcar uma migration como aplicada na tabela `supabase_migrations.schema_migrations` mesmo quando o SQL falha silenciosamente (ex: ALTER TABLE referenciando coluna inexistente em outra migration). Resultado: `db push` diz "up to date" mas as alteracoes nao existem no banco. Diagnostico: testar RPCs/queries diretamente. Fix: criar migration de reparo que re-aplica os comandos com `IF NOT EXISTS`
 - **CUIDADO `.neq()` exclui NULLs:** `.neq("campo", "valor")` no Supabase/PostgREST exclui rows onde o campo e NULL. Para filtrar "campo diferente de X mas incluir NULLs", filtrar em JS: `if (d.campo === "X") continue`. Exemplo: `.neq("lost_reason", "Duplicado/Erro")` remove TODOS os deals WON porque `lost_reason` e NULL neles
 
 ## Navegacao Header
@@ -470,7 +473,7 @@ O botao envia: `["dashboard-light", "meta-ads", "deals-light", "calendar", "pres
   5. **Forecast = Já Ganhos + Pipeline**
 - **Ranges:** pessimista (pipeline ×0.7), esperado (×1.0), otimista (×1.3)
 - **Breakdown:** por squad (expansível para closers) com meta e % meta
-- **Metas:** lê de `squad_metas` (tab=won, month=mês atual), divide por número de closers no squad
+- **Metas:** lê meta TOTAL do mês de `nekt_meta26_metas` (won_szi_meta_pago + won_szi_meta_direto) via service role key (tabela tem RLS, anon key retorna vazio). Divide por 5 closers e distribui por squad. NAO usar `squad_metas` — essa tabela armazena meta proporcional ao dia (meta_to_date), não meta total do mês
 - **View:** cards resumo (Já Ganhos, Pipeline, Forecast Total), range bar visual com linha de meta, tabela pipeline por etapa (com coluna Leadtime → WON), tabela squad/closer
 - **Sync:** usa `["deals"]` (depende de `squad_deals` atualizado)
 - **CUIDADO queries de leadtime vs conversão:** conversão usa `add_time >= 90d` (deals criados no período). Leadtime usa `won_time >= 90d` (deals que fecharam no período, independente de quando foram criados). Misturar os filtros gera leadtimes artificialmente curtos porque `add_time >= 90d` só pega deals recentes com ciclos rápidos
