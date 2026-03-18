@@ -473,19 +473,19 @@ export default function Dashboard() {
             loading={loading}
           />
         )}
-        {mainView === "alinhamento" && <AlinhamentoView data={alinhData} misalignedDeals={misalignedDeals} loading={loading} />}
+        {mainView === "alinhamento" && <AlinhamentoView data={alinhData} misalignedDeals={misalignedDeals} loading={loading} moduleConfig={moduleConfig} />}
         {mainView === "ociosidade" && <OciosidadeView data={ocioData} loading={loading} />}
         {mainView === "balanceamento" && <BalanceamentoView data={balancData} ocioData={ocioData} loading={loading} />}
         {mainView === "campanhas" && <CampanhasView data={campData} loading={loading} mediaFilter={mediaFilter} setMediaFilter={setMediaFilter} />}
-        {mainView === "presales" && <PresalesView data={presalesData} loading={loading} />}
+        {mainView === "presales" && <PresalesView data={presalesData} loading={loading} moduleConfig={moduleConfig} />}
         {mainView === "resultados" && <ResultadosView data={funilData} loading={loading} />}
-        {mainView === "diagnostico-mkt" && <DiagnosticoMktView data={campData} loading={loading} mediaFilter={mediaFilter} setMediaFilter={setMediaFilter} />}
-        {mainView === "planejamento" && <PlanejamentoView data={planejData} loading={loading} daysBack={planejDays} onDaysChange={(d) => { setPlanejDays(d); setPlanejData(null); fetchPlanej(d); }} />}
+        {mainView === "diagnostico-mkt" && <DiagnosticoMktView data={campData} loading={loading} mediaFilter={mediaFilter} setMediaFilter={setMediaFilter} moduleConfig={moduleConfig} />}
+        {mainView === "planejamento" && <PlanejamentoView data={planejData} loading={loading} daysBack={planejDays} onDaysChange={(d) => { setPlanejDays(d); setPlanejData(null); fetchPlanej(d); }} moduleConfig={moduleConfig} />}
         {mainView === "orcamento" && <OrcamentoView data={orcData} loading={loading} onBudgetSave={handleBudgetSave} />}
-        {mainView === "perf-prevendas" && <PerformancePreVendasView data={perfData} loading={loading} daysBack={perfDays} onDaysChange={(d) => { setPerfDays(d); setPerfData(null); fetchPerformance(d); }} />}
-        {mainView === "perf-vendas" && <PerformanceVendasView data={perfData} loading={loading} daysBack={perfDays} onDaysChange={(d) => { setPerfDays(d); setPerfData(null); fetchPerformance(d); }} />}
+        {mainView === "perf-prevendas" && <PerformancePreVendasView data={perfData} loading={loading} daysBack={perfDays} onDaysChange={(d) => { setPerfDays(d); setPerfData(null); fetchPerformance(d); }} moduleConfig={moduleConfig} />}
+        {mainView === "perf-vendas" && <PerformanceVendasView data={perfData} loading={loading} daysBack={perfDays} onDaysChange={(d) => { setPerfDays(d); setPerfData(null); fetchPerformance(d); }} moduleConfig={moduleConfig} />}
         {mainView === "baseline" && <BaselineView data={baselineData} loading={loading} />}
-        {mainView === "diagnostico-vendas" && <DiagnosticoVendasView data={diagVendasData} loading={loading} />}
+        {mainView === "diagnostico-vendas" && <DiagnosticoVendasView data={diagVendasData} loading={loading} moduleConfig={moduleConfig} />}
         {mainView === "forecast" && <ForecastView data={forecastData} loading={loading} />}
         {mainView === "leadtime" && <LeadtimeView data={leadtimeData} loading={loading} daysBack={leadtimeDays} onDaysChange={(d) => { setLeadtimeDays(d); setLeadtimeData(null); fetchLeadtime(d); }} />}
         {mainView === "venda" && (

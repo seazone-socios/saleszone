@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { T, SQUAD_COLORS, SQUADS } from "@/lib/constants";
+import { T, SQUAD_COLORS } from "@/lib/constants";
+import type { ModuleConfig } from "@/lib/modules";
 import type { PlanejamentoData, PlanejamentoEmpRow, PlanejamentoMetrics, HistoricoAdRow, HistoricoCampanhasData } from "@/lib/types";
 import { TH, cellStyle, cellRightStyle, Tag } from "./ui";
 
@@ -10,6 +11,7 @@ interface PlanejamentoViewProps {
   loading: boolean;
   daysBack: number;
   onDaysChange: (days: number) => void;
+  moduleConfig: ModuleConfig;
 }
 
 function fmt(n: number): string {
@@ -114,7 +116,6 @@ const FILTER_TOOLTIP = `Filtros aplicados (equivalente ao Pipedrive):
 type SortDir = "asc" | "desc";
 type SortKey = "emp" | "squad" | "mql" | "sql" | "opp" | "won" | "spend" | "cpw" | "mqlToSql" | "sqlToOpp" | "oppToWon" | "mqlToWon" | "efficiency" | "active";
 
-const ACTIVE_EMPS = new Set<string>(SQUADS.flatMap((s) => [...s.empreendimentos]));
 
 function SortableTH({ label, sortKey, currentSort, onSort, right, center }: {
   label: string;
@@ -148,11 +149,11 @@ function SortableTH({ label, sortKey, currentSort, onSort, right, center }: {
   );
 }
 
-function getRowSortValue(row: PlanejamentoEmpRow, key: SortKey): number | string {
+function getRowSortValue(row: PlanejamentoEmpRow, key: SortKey, activeEmps: Set<string>): number | string {
   if (key === "emp") return row.emp;
   if (key === "squad") return row.squadId;
   if (key === "efficiency") return row.efficiency === "high" ? 3 : row.efficiency === "medium" ? 2 : 1;
-  if (key === "active") return ACTIVE_EMPS.has(row.emp) ? 1 : 0;
+  if (key === "active") return activeEmps.has(row.emp) ? 1 : 0;
   if (key === "mqlToWon") {
     const h = row.historical;
     return h.mql > 0 ? h.won / h.mql : 0;
@@ -160,10 +161,10 @@ function getRowSortValue(row: PlanejamentoEmpRow, key: SortKey): number | string
   return row.historical[key as keyof PlanejamentoMetrics] as number;
 }
 
-function sortRows(rows: PlanejamentoEmpRow[], key: SortKey, dir: SortDir): PlanejamentoEmpRow[] {
+function sortRows(rows: PlanejamentoEmpRow[], key: SortKey, dir: SortDir, activeEmps: Set<string>): PlanejamentoEmpRow[] {
   return [...rows].sort((a, b) => {
-    const va = getRowSortValue(a, key);
-    const vb = getRowSortValue(b, key);
+    const va = getRowSortValue(a, key, activeEmps);
+    const vb = getRowSortValue(b, key, activeEmps);
     if (typeof va === "string" && typeof vb === "string") {
       return dir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
     }
@@ -227,10 +228,10 @@ function SummaryCard({ label, currentValue, histValue, format, periodLabel }: {
   );
 }
 
-function HistEmpRow({ row }: { row: PlanejamentoEmpRow }) {
+function HistEmpRow({ row, activeEmps }: { row: PlanejamentoEmpRow; activeEmps: Set<string> }) {
   const h = row.historical;
   const color = SQUAD_COLORS[row.squadId] || T.azul600;
-  const isActive = ACTIVE_EMPS.has(row.emp);
+  const isActive = activeEmps.has(row.emp);
   const mqlToWon = h.mql > 0 ? h.won / h.mql : 0;
 
   return (
@@ -442,7 +443,8 @@ function MetricsCells({ r, avgCpl, vis }: { r: { spend: number; leads: number; m
   );
 }
 
-function HistoricoCampanhasSection() {
+function HistoricoCampanhasSection({ moduleConfig }: { moduleConfig: ModuleConfig }) {
+  const ACTIVE_EMPS = useMemo(() => new Set<string>(moduleConfig.squads.flatMap((s) => [...s.empreendimentos])), [moduleConfig]);
   const [histData, setHistData] = useState<HistoricoCampanhasData | null>(null);
   const [histLoading, setHistLoading] = useState(true);
   const [histError, setHistError] = useState<string | null>(null);
@@ -865,7 +867,8 @@ const DAYS_OPTIONS = [
   { value: 365, label: "Último ano" },
 ];
 
-export function PlanejamentoView({ data, loading, daysBack, onDaysChange }: PlanejamentoViewProps) {
+export function PlanejamentoView({ data, loading, daysBack, onDaysChange, moduleConfig }: PlanejamentoViewProps) {
+  const ACTIVE_EMPS = useMemo(() => new Set<string>(moduleConfig.squads.flatMap((s) => [...s.empreendimentos])), [moduleConfig.squads]);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "mql", dir: "desc" });
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [squadFilter, setSquadFilter] = useState<number>(0); // 0 = all
@@ -873,7 +876,7 @@ export function PlanejamentoView({ data, loading, daysBack, onDaysChange }: Plan
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/dashboard/planejamento?days=90")
+    fetch(`${moduleConfig.apiBase}/planejamento?days=90`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (!cancelled && d) setRecent90Data(d); })
       .catch(() => {});
@@ -893,7 +896,7 @@ export function PlanejamentoView({ data, loading, daysBack, onDaysChange }: Plan
     return rows;
   }, [data, activeFilter, squadFilter]);
 
-  const sortedRows = useMemo(() => sortRows(filteredRows, sort.key, sort.dir), [filteredRows, sort]);
+  const sortedRows = useMemo(() => sortRows(filteredRows, sort.key, sort.dir, ACTIVE_EMPS), [filteredRows, sort, ACTIVE_EMPS]);
 
   const filteredTotals = useMemo(() => {
     const sum = (arr: PlanejamentoMetrics[]): PlanejamentoMetrics => {
@@ -952,7 +955,7 @@ export function PlanejamentoView({ data, loading, daysBack, onDaysChange }: Plan
         mqlToSql: rate(sql, mql), sqlToOpp: rate(opp, sql), oppToWon: rate(won, opp),
       };
     };
-    return SQUADS.map((sq) => {
+    return moduleConfig.squads.map((sq) => {
       const rows = filteredRows.filter((r) => r.squadId === sq.id);
       // Recent 90 days: use dedicated data, applying same filters
       let recent90Rows = recent90Data?.empreendimentos.filter((r) => r.squadId === sq.id) || [];
@@ -1120,7 +1123,7 @@ export function PlanejamentoView({ data, loading, daysBack, onDaysChange }: Plan
             </thead>
             <tbody>
               {sortedRows.map((row) => (
-                <HistEmpRow key={row.emp} row={row} />
+                <HistEmpRow key={row.emp} row={row} activeEmps={ACTIVE_EMPS} />
               ))}
               <HistTotalsRow label="Total" m={th} />
             </tbody>
@@ -1205,7 +1208,7 @@ export function PlanejamentoView({ data, loading, daysBack, onDaysChange }: Plan
       </div>
 
       {/* Histórico de Campanhas — collapsible, lazy load */}
-      <HistoricoCampanhasSection />
+      <HistoricoCampanhasSection moduleConfig={moduleConfig} />
     </div>
   );
 }

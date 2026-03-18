@@ -39,6 +39,35 @@ const FUNCTION_MAP: Record<string, Array<{ name: string; body?: Record<string, u
     { name: "sync-squad-deals", body: { mode: "deals-open" } },
     { name: "sync-squad-deals", body: { mode: "deals-won" } },
   ],
+  // --- MKTP (Marketplace) sync functions ---
+  "mktp-dashboard": [
+    { name: "sync-mktp-dashboard", body: { mode: "daily-open" } },
+    { name: "sync-mktp-dashboard", body: { mode: "daily-won" } },
+    { name: "sync-mktp-dashboard", body: { mode: "daily-lost" } },
+    { name: "sync-mktp-dashboard", body: { mode: "alignment" } },
+    { name: "sync-mktp-dashboard", body: { mode: "metas" } },
+    { name: "sync-mktp-dashboard", body: { mode: "monthly-rollup" } },
+  ],
+  "mktp-dashboard-light": [
+    { name: "sync-mktp-dashboard", body: { mode: "daily-open" } },
+    { name: "sync-mktp-dashboard", body: { mode: "daily-won" } },
+    { name: "sync-mktp-dashboard", body: { mode: "alignment" } },
+    { name: "sync-mktp-dashboard", body: { mode: "metas" } },
+    { name: "sync-mktp-dashboard", body: { mode: "monthly-rollup" } },
+  ],
+  "mktp-meta-ads": [{ name: "sync-mktp-meta-ads" }],
+  "mktp-calendar": [{ name: "sync-mktp-calendar" }],
+  "mktp-presales": [{ name: "sync-mktp-presales" }],
+  "mktp-deals": [
+    { name: "sync-mktp-deals", body: { mode: "deals-open" } },
+    { name: "sync-mktp-deals", body: { mode: "deals-won" } },
+    { name: "sync-mktp-deals", body: { mode: "deals-lost" } },
+    { name: "sync-mktp-deals", body: { mode: "deals-flow" } },
+  ],
+  "mktp-deals-light": [
+    { name: "sync-mktp-deals", body: { mode: "deals-open" } },
+    { name: "sync-mktp-deals", body: { mode: "deals-won" } },
+  ],
 };
 
 interface SyncRequest {
@@ -86,7 +115,7 @@ export async function POST(request: Request) {
   }
 
   // Separate Pipedrive-dependent functions from others so we can interleave
-  const PIPEDRIVE_FUNCTIONS = new Set(["dashboard", "dashboard-light", "deals", "deals-light", "presales"]);
+  const PIPEDRIVE_FUNCTIONS = new Set(["dashboard", "dashboard-light", "deals", "deals-light", "presales", "mktp-dashboard", "mktp-dashboard-light", "mktp-deals", "mktp-deals-light", "mktp-presales"]);
 
   const pipedriveSteps: Array<{ label: string; step: { name: string; body?: Record<string, unknown> } }> = [];
   const otherSteps: Array<{ label: string; step: { name: string; body?: Record<string, unknown> } }> = [];

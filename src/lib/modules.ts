@@ -72,18 +72,31 @@ const SZI_CONFIG: ModuleConfig = {
   syncFunctions: ["dashboard-light", "meta-ads", "deals-light", "calendar", "presales", "baserow"],
 };
 
-// --- MKTP (Marketplace) — placeholder, to be filled after Fase 0 discovery ---
+// --- MKTP (Marketplace) — single squad, no squad grouping ---
+
+const MKTP_SQUADS: readonly SquadDef[] = [
+  {
+    id: 1,
+    name: "Marketplace",
+    marketing: "Rodrigo Guirado",
+    preVenda: "Karoane",  // multiple presellers, using first as squad representative
+    venda: "Nevine Saratt",
+    empreendimentos: [], // TODO: populate with MKTP empreendimentos (all non-active/closed groups)
+  },
+] as const;
 
 const MKTP_CONFIG: ModuleConfig = {
   id: "mktp",
   label: "Marketplace",
   shortLabel: "MKTP",
-  pipelineId: 0,                 // TODO: discover via Pipedrive API
+  pipelineId: 37,
   metaAdsAccountId: "act_799783985155825",
-  squads: [],                    // TODO: discover team structure
-  closers: [],                   // TODO: discover closers
-  presellers: [],                // TODO: discover presellers
-  squadCloserMap: {},            // TODO: map after discovering squads
+  squads: MKTP_SQUADS,
+  closers: ["Nevine Saratt", "Willian Miranda"],
+  presellers: ["Karoane", "Izabela Soares", "Karoline Borges"],
+  squadCloserMap: {
+    1: [0, 1], // Nevine Saratt, Willian Miranda
+  },
   tablePrefix: "mktp",
   apiBase: "/api/mktp",
   syncFunctions: ["mktp-dashboard-light", "mktp-meta-ads", "mktp-deals-light", "mktp-calendar", "mktp-presales"],

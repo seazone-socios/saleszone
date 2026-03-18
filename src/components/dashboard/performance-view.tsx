@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronRight } from "lucide-react";
-import { T, SQUAD_COLORS, SQUADS } from "@/lib/constants";
+import { T, SQUAD_COLORS } from "@/lib/constants";
+import type { ModuleConfig } from "@/lib/modules";
 import type { PerformanceData, PerformanceEmpBreakdown, PerformanceEmpRow } from "@/lib/types";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   loading: boolean;
   daysBack: number;
   onDaysChange: (d: number) => void;
+  moduleConfig: ModuleConfig;
 }
 
 const PERIOD_OPTIONS = [
@@ -270,7 +272,7 @@ function PresellerEmpRows({ byEmp }: { byEmp: PerformanceEmpBreakdown[] }) {
 // =============================================
 // PERFORMANCE PRÉ-VENDAS (MIA + Pré-Vendedores)
 // =============================================
-export function PerformancePreVendasView({ data, loading, daysBack, onDaysChange }: Props) {
+export function PerformancePreVendasView({ data, loading, daysBack, onDaysChange, moduleConfig }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpand = (key: string) => {
     setExpanded((prev) => {
@@ -333,7 +335,7 @@ export function PerformancePreVendasView({ data, loading, daysBack, onDaysChange
             {allPresellers.map((p) => {
               const rowKey = `${p.name}-${p.squadId}-${p.role}`;
               const sqColor = SQUAD_COLORS[p.squadId] || T.azul600;
-              const sqName = SQUADS.find((s) => s.id === p.squadId)?.name || "";
+              const sqName = moduleConfig.squads.find((s) => s.id === p.squadId)?.name || "";
               const isMia = p.role === "marketing";
               const recebToSql = p.dealsReceived > 0 ? Math.round((p.sql / p.dealsReceived) * 1000) / 10 : 0;
               const isOpen = expanded.has(rowKey);
@@ -627,7 +629,7 @@ function OppToWonChart({ lines, title, maxMonths }: { lines: ChartLine[]; title?
 // =============================================
 // PERFORMANCE VENDAS (Closers)
 // =============================================
-export function PerformanceVendasView({ data, loading, daysBack, onDaysChange }: Props) {
+export function PerformanceVendasView({ data, loading, daysBack, onDaysChange, moduleConfig }: Props) {
   type CloserSortKey = "name" | "opp" | "won" | "oppToWon";
   type ChartView = "consolidado" | "todos" | "squad";
   const [closerSort, setCloserSort] = useState<CloserSortKey>("oppToWon");
@@ -755,7 +757,7 @@ export function PerformanceVendasView({ data, loading, daysBack, onDaysChange }:
           <tbody>
             {sortedClosers.map((c) => {
               const sqColor = SQUAD_COLORS[c.squadId] || T.azul600;
-              const sqName = SQUADS.find((s) => s.id === c.squadId)?.name || "";
+              const sqName = moduleConfig.squads.find((s) => s.id === c.squadId)?.name || "";
               const isOpen = expanded.has(c.name);
               const hasEmp = c.byEmp && c.byEmp.length > 0;
               return (
@@ -969,7 +971,7 @@ function EmpPerformanceSection({ emps, squads, daysBack, consolidatedTimeSeries,
           <tbody>
             {sortedEmps.map((e) => {
               const sqColor = SQUAD_COLORS[e.squadId] || T.cinza400;
-              const sqName = SQUADS.find((s) => s.id === e.squadId)?.name || "—";
+              const sqName = squads.find((s) => s.id === e.squadId)?.name || "—";
               return (
                 <tr
                   key={e.emp}

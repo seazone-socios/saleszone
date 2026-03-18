@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { T, SQUAD_COLORS, SQUADS } from "@/lib/constants";
+import { T, SQUAD_COLORS } from "@/lib/constants";
+import type { ModuleConfig } from "@/lib/modules";
 import type { DiagVendasData, DiagVendasDealRow, DiagVendasCloserSummary, VendasSeveridade } from "@/lib/types";
 
 interface Props {
   data: DiagVendasData | null;
   loading: boolean;
+  moduleConfig: ModuleConfig;
 }
 
 const SEV_COLORS: Record<VendasSeveridade, { border: string; bg: string; text: string }> = {
@@ -36,7 +38,7 @@ type SortDir = "asc" | "desc";
 
 const SEV_ORDER: Record<string, number> = { CRITICO: 0, ALERTA: 1, OK: 2 };
 
-export function DiagnosticoVendasView({ data, loading }: Props) {
+export function DiagnosticoVendasView({ data, loading, moduleConfig }: Props) {
   const [filtroSquad, setFiltroSquad] = useState("todos");
   const [filtroCloser, setFiltroCloser] = useState("todos");
   const [filtroSev, setFiltroSev] = useState("todos");
@@ -193,7 +195,7 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
                         backgroundColor: SQUAD_COLORS[c.squadId] || T.cinza600,
                         padding: "2px 7px", borderRadius: "9999px",
                       }}>
-                        {SQUADS.find((s) => s.id === c.squadId)?.name || "—"}
+                        {moduleConfig.squads.find((s) => s.id === c.squadId)?.name || "—"}
                       </span>
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>{c.totalDeals}</td>
@@ -219,7 +221,7 @@ export function DiagnosticoVendasView({ data, loading }: Props) {
       <Section title="Deals Abertos">
         <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap", padding: "12px 16px 0" }}>
           <FilterSelect label="Squad" value={filtroSquad} onChange={setFiltroSquad}
-            options={[{ value: "todos", label: "Todos" }, ...SQUADS.map((s) => ({ value: String(s.id), label: s.name }))]} />
+            options={[{ value: "todos", label: "Todos" }, ...moduleConfig.squads.map((s) => ({ value: String(s.id), label: s.name }))]} />
           <FilterSelect label="Closer" value={filtroCloser} onChange={setFiltroCloser}
             options={[{ value: "todos", label: "Todos" }, ...closerOptions.map((n) => ({ value: n, label: n }))]} />
           <FilterSelect label="Severidade" value={filtroSev} onChange={setFiltroSev}

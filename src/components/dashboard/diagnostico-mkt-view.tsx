@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, Fragment } from "react";
-import { T, SQUAD_COLORS, SQUADS } from "@/lib/constants";
+import { T, SQUAD_COLORS } from "@/lib/constants";
+import type { ModuleConfig } from "@/lib/modules";
 import type { CampanhasData, MetaAdRow, CampanhasEmpSummary, MediaFilter } from "@/lib/types";
 import { MediaFilterToggle } from "./ui";
 
@@ -10,6 +11,7 @@ interface Props {
   loading: boolean;
   mediaFilter: MediaFilter;
   setMediaFilter: (f: MediaFilter) => void;
+  moduleConfig: ModuleConfig;
 }
 
 function formatBRL(v: number): string {
@@ -38,7 +40,7 @@ const SEV_COLORS = {
   OK: { border: T.verde600, bg: T.verde50, text: T.verde700, cardBg: T.verde600 },
 } as const;
 
-export function DiagnosticoMktView({ data, loading, mediaFilter, setMediaFilter }: Props) {
+export function DiagnosticoMktView({ data, loading, mediaFilter, setMediaFilter, moduleConfig }: Props) {
   const [filtroEmp, setFiltroEmp] = useState("todos");
   const [filtroSev, setFiltroSev] = useState("todos");
   const [filtroSquad, setFiltroSquad] = useState("todos");
@@ -305,7 +307,7 @@ export function DiagnosticoMktView({ data, loading, mediaFilter, setMediaFilter 
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {SQUADS.find((s) => s.id === ad.squad_id)?.name || "—"}
+                      {moduleConfig.squads.find((s) => s.id === ad.squad_id)?.name || "—"}
                     </span>
                     <span style={{ fontSize: "11px", opacity: 0.85, flex: 1 }}>{ad.empreendimento}</span>
                     <span
@@ -404,7 +406,7 @@ export function DiagnosticoMktView({ data, loading, mediaFilter, setMediaFilter 
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {SQUADS.find((s) => s.id === ad.squad_id)?.name || "—"}
+                        {moduleConfig.squads.find((s) => s.id === ad.squad_id)?.name || "—"}
                       </span>
                       <span style={{ fontSize: "11px", opacity: 0.85, flex: 1 }}>{ad.empreendimento}</span>
                       <span
@@ -491,7 +493,7 @@ export function DiagnosticoMktView({ data, loading, mediaFilter, setMediaFilter 
               style={selectStyle}
             >
               <option value="todos">Todos</option>
-              {SQUADS.map((sq) => (
+              {moduleConfig.squads.map((sq) => (
                 <option key={sq.id} value={String(sq.id)}>{sq.name}</option>
               ))}
             </select>
@@ -546,7 +548,7 @@ export function DiagnosticoMktView({ data, loading, mediaFilter, setMediaFilter 
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {SQUADS.find((s) => s.id === ad.squad_id)?.name?.replace("Squad ", "Sq ") || "—"}
+                        {moduleConfig.squads.find((s) => s.id === ad.squad_id)?.name?.replace("Squad ", "Sq ") || "—"}
                       </span>
                     </td>
                     <td style={{ ...tdStyle, fontSize: "12px" }}>{ad.empreendimento}</td>

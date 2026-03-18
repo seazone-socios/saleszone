@@ -1,6 +1,7 @@
 "use client";
 
-import { T, SQUAD_COLORS, PV_COLS, V_COLS, SQUAD_V_MAP, SQUADS } from "@/lib/constants";
+import { T, SQUAD_COLORS } from "@/lib/constants";
+import type { ModuleConfig } from "@/lib/modules";
 import type { AlinhamentoData, MisalignedDealsData } from "@/lib/types";
 import { StatPill, tdStyle, thBaseStyle } from "./ui";
 
@@ -8,9 +9,10 @@ interface Props {
   data: AlinhamentoData | null;
   misalignedDeals: MisalignedDealsData | null;
   loading: boolean;
+  moduleConfig: ModuleConfig;
 }
 
-export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
+export function AlinhamentoView({ data, misalignedDeals, loading, moduleConfig }: Props) {
   if (loading && !data) {
     return (
       <div style={{ textAlign: "center", padding: "60px", color: T.cinza600 }}>
@@ -75,7 +77,7 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
                 <th style={{ ...thBaseStyle, borderBottom: "none" }} />
                 <th style={{ ...thBaseStyle, borderBottom: "none" }} />
                 <th
-                  colSpan={PV_COLS.length}
+                  colSpan={moduleConfig.presellers.length}
                   style={{
                     ...thBaseStyle,
                     textAlign: "center",
@@ -89,7 +91,7 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
                   Pré Venda
                 </th>
                 <th
-                  colSpan={V_COLS.length}
+                  colSpan={moduleConfig.closers.length}
                   style={{
                     ...thBaseStyle,
                     textAlign: "center",
@@ -106,26 +108,26 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
               <tr style={{ backgroundColor: T.cinza50 }}>
                 <th style={{ ...thBaseStyle, textAlign: "left", minWidth: 50 }}>Squad</th>
                 <th style={{ ...thBaseStyle, textAlign: "left", minWidth: 180 }}>Empreendimento</th>
-                {PV_COLS.map((p, i) => (
+                {moduleConfig.presellers.map((p, i) => (
                   <th
                     key={`pv-${i}`}
                     style={{
                       ...thBaseStyle,
                       textAlign: "right",
-                      width: `${100 / (PV_COLS.length + V_COLS.length + 2)}%`,
+                      width: `${100 / (moduleConfig.presellers.length + moduleConfig.closers.length + 2)}%`,
                       borderLeft: i === 0 ? `1px solid ${T.cinza200}` : undefined,
                     }}
                   >
                     {p}
                   </th>
                 ))}
-                {V_COLS.map((p, i) => (
+                {moduleConfig.closers.map((p, i) => (
                   <th
                     key={`v-${i}`}
                     style={{
                       ...thBaseStyle,
                       textAlign: "right",
-                      width: `${100 / (PV_COLS.length + V_COLS.length + 2)}%`,
+                      width: `${100 / (moduleConfig.presellers.length + moduleConfig.closers.length + 2)}%`,
                       borderLeft: i === 0 ? `2px solid ${T.cinza300}` : undefined,
                     }}
                   >
@@ -139,8 +141,8 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
                 const clr = SQUAD_COLORS[row.sqId] || T.azul600;
                 const isFirst = ri === 0 || rows[ri - 1].sqId !== row.sqId;
                 const isLast = ri === rows.length - 1 || rows[ri + 1]?.sqId !== row.sqId;
-                const sqPVIdx = PV_COLS.indexOf(row.correctPV);
-                const sqVIndices = SQUAD_V_MAP[row.sqId] || [];
+                const sqPVIdx = moduleConfig.presellers.indexOf(row.correctPV);
+                const sqVIndices = moduleConfig.squadCloserMap[row.sqId] || [];
 
                 return (
                   <tr
@@ -151,7 +153,7 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
                   >
                     <td style={{ ...tdStyle, color: T.cinza600, fontWeight: 500 }}>{row.sqId}</td>
                     <td style={{ ...tdStyle, color: T.cinza800 }}>{row.emp}</td>
-                    {PV_COLS.map((p, pi) => {
+                    {moduleConfig.presellers.map((p, pi) => {
                       const val = row.cells.pv[p] || 0;
                       const isZone = pi === sqPVIdx;
                       const isMis = val > 0 && !isZone;
@@ -180,7 +182,7 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
                         </td>
                       );
                     })}
-                    {V_COLS.map((p, vi) => {
+                    {moduleConfig.closers.map((p, vi) => {
                       const val = row.cells.v[p] || 0;
                       const isZone = sqVIndices.includes(vi);
                       const isZoneFirst = isZone && vi === sqVIndices[0];
@@ -229,11 +231,11 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
       {personDeals.length > 0 && (() => {
         // Map person → squad
         const personToSquad = new Map<string, number>();
-        for (const sq of SQUADS) {
-          const pvIdx = PV_COLS.indexOf(sq.preVenda);
+        for (const sq of moduleConfig.squads) {
+          const pvIdx = moduleConfig.presellers.indexOf(sq.preVenda);
           if (pvIdx >= 0) personToSquad.set(sq.preVenda, sq.id);
-          const vIndices = SQUAD_V_MAP[sq.id] || [];
-          for (const vi of vIndices) personToSquad.set(V_COLS[vi], sq.id);
+          const vIndices = moduleConfig.squadCloserMap[sq.id] || [];
+          for (const vi of vIndices) personToSquad.set(moduleConfig.closers[vi], sq.id);
         }
 
         // Group personDeals by squad
@@ -254,7 +256,7 @@ export function AlinhamentoView({ data, misalignedDeals, loading }: Props) {
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               {squadIds.map((sqId) => {
                 const sqColor = SQUAD_COLORS[sqId] || T.cinza600;
-                const sqName = SQUADS.find((s) => s.id === sqId)?.name || `Squad ${sqId}`;
+                const sqName = moduleConfig.squads.find((s) => s.id === sqId)?.name || `Squad ${sqId}`;
                 const people = bySquad.get(sqId)!;
                 const totalDeals = people.reduce((sum, pd) => sum + pd.deals.length, 0);
 

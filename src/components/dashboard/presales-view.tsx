@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { T, SQUAD_COLORS, SQUADS } from "@/lib/constants";
+import { T, SQUAD_COLORS } from "@/lib/constants";
+import type { ModuleConfig } from "@/lib/modules";
 import type { PresalesData, PresellerSummary } from "@/lib/types";
 
 interface Props {
   data: PresalesData | null;
   loading: boolean;
+  moduleConfig: ModuleConfig;
 }
 
 function formatMinutes(m: number): string {
@@ -52,7 +54,7 @@ function statusLabel(minutes: number | null): string {
 
 const MAIN_PVS = ["Luciana Patrício", "Luciana Patricio", "Natália Saramago", "Hellen Dias", "Jeniffer Correa"];
 
-export function PresalesView({ data, loading }: Props) {
+export function PresalesView({ data, loading, moduleConfig }: Props) {
   if (loading && !data) {
     return (
       <div style={{ textAlign: "center", padding: "60px", color: T.cinza600 }}>
@@ -167,7 +169,7 @@ export function PresalesView({ data, loading }: Props) {
           </thead>
           <tbody>
             {mainPVs.map((ps) => {
-              const squad = SQUADS.find((s) => s.preVenda === ps.name);
+              const squad = moduleConfig.squads.find((s) => s.preVenda === ps.name);
               const sqColor = ps.squadId ? SQUAD_COLORS[ps.squadId] || T.azul600 : T.cinza600;
               const barColor = ps.pctSub30 >= 70 ? "#16a34a" : ps.pctSub30 >= 40 ? "#d97706" : "#dc2626";
               const pendColor = ps.dealsPendentes > 5 ? "#dc2626" : ps.dealsPendentes > 0 ? "#d97706" : T.cinza400;
