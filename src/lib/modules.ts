@@ -102,12 +102,40 @@ const MKTP_CONFIG: ModuleConfig = {
   syncFunctions: ["mktp-dashboard-light", "mktp-meta-ads", "mktp-deals-light", "mktp-calendar", "mktp-presales"],
 };
 
+// --- SZS (Serviços) — single squad, no squad grouping ---
+
+const SZS_SQUADS: readonly SquadDef[] = [
+  {
+    id: 1,
+    name: "Serviços",
+    marketing: "Laura",
+    preVenda: "Larissa Marques",
+    venda: "Maria Vitória",
+    empreendimentos: [], // SZS handles all empreendimentos like MKTP
+  },
+] as const;
+
+const SZS_CONFIG: ModuleConfig = {
+  id: "szs",
+  label: "Serviços",
+  shortLabel: "SZS",
+  pipelineId: 14,
+  metaAdsAccountId: "act_721191188358261",
+  squads: SZS_SQUADS,
+  closers: ["Maria Vitória", "Gabriela Branco", "Gabriela Lemos", "Samuel Barreto", "Giovanna Araujo"],
+  presellers: ["Larissa Marques", "Joyce Batista", "Adriano Raquel", "Raynara Lopes"],
+  squadCloserMap: { 1: [0, 1, 2, 3, 4] },
+  tablePrefix: "szs",
+  apiBase: "/api/szs",
+  syncFunctions: ["szs-dashboard-light", "szs-meta-ads", "szs-deals-light", "szs-calendar", "szs-presales"],
+};
+
 // --- Registry ---
 
 export const MODULES: Record<string, ModuleConfig> = {
   szi: SZI_CONFIG,
   mktp: MKTP_CONFIG,
-  // szs: SZS_CONFIG, // future
+  szs: SZS_CONFIG,
 };
 
 export const MODULE_IDS = Object.keys(MODULES);

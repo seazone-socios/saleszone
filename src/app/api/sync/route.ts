@@ -68,6 +68,35 @@ const FUNCTION_MAP: Record<string, Array<{ name: string; body?: Record<string, u
     { name: "sync-mktp-deals", body: { mode: "deals-open" } },
     { name: "sync-mktp-deals", body: { mode: "deals-won" } },
   ],
+  // --- SZS (Serviços) sync functions ---
+  "szs-dashboard": [
+    { name: "sync-szs-dashboard", body: { mode: "daily-open" } },
+    { name: "sync-szs-dashboard", body: { mode: "daily-won" } },
+    { name: "sync-szs-dashboard", body: { mode: "daily-lost" } },
+    { name: "sync-szs-dashboard", body: { mode: "alignment" } },
+    { name: "sync-szs-dashboard", body: { mode: "metas" } },
+    { name: "sync-szs-dashboard", body: { mode: "monthly-rollup" } },
+  ],
+  "szs-dashboard-light": [
+    { name: "sync-szs-dashboard", body: { mode: "daily-open" } },
+    { name: "sync-szs-dashboard", body: { mode: "daily-won" } },
+    { name: "sync-szs-dashboard", body: { mode: "alignment" } },
+    { name: "sync-szs-dashboard", body: { mode: "metas" } },
+    { name: "sync-szs-dashboard", body: { mode: "monthly-rollup" } },
+  ],
+  "szs-meta-ads": [{ name: "sync-szs-meta-ads" }],
+  "szs-calendar": [{ name: "sync-szs-calendar" }],
+  "szs-presales": [{ name: "sync-szs-presales" }],
+  "szs-deals": [
+    { name: "sync-szs-deals", body: { mode: "deals-open" } },
+    { name: "sync-szs-deals", body: { mode: "deals-won" } },
+    { name: "sync-szs-deals", body: { mode: "deals-lost" } },
+    { name: "sync-szs-deals", body: { mode: "deals-flow" } },
+  ],
+  "szs-deals-light": [
+    { name: "sync-szs-deals", body: { mode: "deals-open" } },
+    { name: "sync-szs-deals", body: { mode: "deals-won" } },
+  ],
 };
 
 interface SyncRequest {
@@ -115,7 +144,7 @@ export async function POST(request: Request) {
   }
 
   // Separate Pipedrive-dependent functions from others so we can interleave
-  const PIPEDRIVE_FUNCTIONS = new Set(["dashboard", "dashboard-light", "deals", "deals-light", "presales", "mktp-dashboard", "mktp-dashboard-light", "mktp-deals", "mktp-deals-light", "mktp-presales"]);
+  const PIPEDRIVE_FUNCTIONS = new Set(["dashboard", "dashboard-light", "deals", "deals-light", "presales", "mktp-dashboard", "mktp-dashboard-light", "mktp-deals", "mktp-deals-light", "mktp-presales", "szs-dashboard", "szs-dashboard-light", "szs-deals", "szs-deals-light", "szs-presales"]);
 
   const pipedriveSteps: Array<{ label: string; step: { name: string; body?: Record<string, unknown> } }> = [];
   const otherSteps: Array<{ label: string; step: { name: string; body?: Record<string, unknown> } }> = [];
