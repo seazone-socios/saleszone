@@ -689,7 +689,7 @@ export interface BacklogTask {
   title: string;
   description: string;
   type: "feature" | "bug";
-  status: "backlog" | "fazendo" | "review" | "done";
+  status: "backlog" | "planejado" | "fazendo" | "review" | "done";
   assigned_to: string | null;
   assigned_name?: string | null;
   definition_of_done: string;

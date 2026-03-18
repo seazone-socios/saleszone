@@ -41,7 +41,7 @@ export async function GET() {
     created_by_name: profileMap.get(t.created_by)?.full_name || null,
   }));
 
-  return NextResponse.json({ tasks: enriched, currentUserId: user.id });
+  return NextResponse.json({ tasks: enriched, profiles: profiles || [], currentUserId: user.id });
 }
 
 // POST — Cria nova task
@@ -113,7 +113,7 @@ export async function PATCH(request: NextRequest) {
   if (updates.type && !["feature", "bug"].includes(updates.type as string)) {
     return NextResponse.json({ error: "Invalid type" }, { status: 400 });
   }
-  if (updates.status && !["backlog", "fazendo", "review", "done"].includes(updates.status as string)) {
+  if (updates.status && !["backlog", "planejado", "fazendo", "review", "done"].includes(updates.status as string)) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 

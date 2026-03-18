@@ -47,9 +47,11 @@ export async function GET() {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
-        next: { revalidate: 3600 }, // cache 1h
+        cache: "no-store",
       }
     );
+
+    console.log("[contributions] GitHub API status:", res.status);
 
     if (res.status === 202) {
       // GitHub is computing stats, retry later
@@ -57,6 +59,8 @@ export async function GET() {
     }
 
     if (!res.ok) {
+      const body = await res.text();
+      console.error("[contributions] GitHub API error:", res.status, body);
       return NextResponse.json({ error: `GitHub API error: ${res.status}` }, { status: 500 });
     }
 
@@ -73,20 +77,22 @@ export async function GET() {
         .map((p) => [p.github_username!.toLowerCase(), p])
     );
 
-    const contributors = data.map((c) => {
-      const profile = ghMap.get(c.author.login.toLowerCase());
+    // Only include contributors that are linked to system users
+    const contributors = data
+      .filter((c) => ghMap.has(c.author.login.toLowerCase()))
+      .map((c) => {
+      const profile = ghMap.get(c.author.login.toLowerCase())!;
       const totalAdded = c.weeks.reduce((sum, w) => sum + w.a, 0);
       const totalDeleted = c.weeks.reduce((sum, w) => sum + w.d, 0);
 
-      // Find last commit week
       const lastWeekWithCommits = [...c.weeks].reverse().find((w) => w.c > 0);
       const lastCommitDate = lastWeekWithCommits
         ? new Date(lastWeekWithCommits.w * 1000).toISOString()
         : null;
 
       return {
-        name: profile?.full_name || c.author.login,
-        email: profile?.email || null,
+        name: profile.full_name,
+        email: profile.email,
         github_login: c.author.login,
         totalCommits: c.total,
         totalAdded,
