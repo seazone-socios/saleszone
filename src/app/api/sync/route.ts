@@ -99,12 +99,19 @@ const FUNCTION_MAP: Record<string, Array<{ name: string; body?: Record<string, u
   ],
 };
 
-// Pipedrive-dependent function keys (need rate-limit delays between calls)
-const PIPEDRIVE_FUNCTIONS = new Set([
-  "dashboard", "dashboard-light", "deals", "deals-light", "presales",
-  "mktp-dashboard", "mktp-dashboard-light", "mktp-deals", "mktp-deals-light", "mktp-presales",
-  "szs-dashboard", "szs-dashboard-light", "szs-deals", "szs-deals-light", "szs-presales",
+// Pipedrive function groups — dashboard and deals/presales hit different endpoints,
+// so they can run in parallel sub-tracks without 429 risk.
+const PIPEDRIVE_DASHBOARD = new Set([
+  "dashboard", "dashboard-light",
+  "mktp-dashboard", "mktp-dashboard-light",
+  "szs-dashboard", "szs-dashboard-light",
 ]);
+const PIPEDRIVE_DEALS = new Set([
+  "deals", "deals-light", "presales",
+  "mktp-deals", "mktp-deals-light", "mktp-presales",
+  "szs-deals", "szs-deals-light", "szs-presales",
+]);
+const PIPEDRIVE_ALL = new Set([...PIPEDRIVE_DASHBOARD, ...PIPEDRIVE_DEALS]);
 
 // DB-only modes that don't hit external APIs — no delay needed before them
 const DB_ONLY_MODES = new Set(["metas", "monthly-rollup"]);
@@ -121,7 +128,7 @@ interface FunctionResult {
 
 const CALL_TIMEOUT = 30_000; // 30s per Edge Function call
 const RETRY_DELAY = 5_000;   // 5s before retry
-const PIPEDRIVE_DELAY = 4_000; // 4s between Pipedrive calls
+const PIPEDRIVE_DELAY = 2_000; // 2s between Pipedrive calls (safe — rate limit is 80 req/2s)
 
 async function callEdgeFunction(
   supabaseUrl: string,
@@ -163,6 +170,31 @@ async function callEdgeFunction(
   return { function: label, status: "error", error: "Max retries exceeded" };
 }
 
+// Run steps sequentially with 2s delay between real Pipedrive calls (skip DB-only)
+async function runSequentialTrack(
+  steps: Step[],
+  supabaseUrl: string,
+  supabaseKey: string,
+): Promise<FunctionResult[]> {
+  const results: FunctionResult[] = [];
+  let lastWasPipedrive = false;
+
+  for (const { label, step } of steps) {
+    const mode = step.body?.mode as string | undefined;
+    const isDbOnly = mode ? DB_ONLY_MODES.has(mode) : false;
+
+    if (!isDbOnly && lastWasPipedrive) {
+      await new Promise((r) => setTimeout(r, PIPEDRIVE_DELAY));
+    }
+
+    results.push(await callEdgeFunction(supabaseUrl, supabaseKey, step, label));
+    lastWasPipedrive = !isDbOnly;
+  }
+  return results;
+}
+
+type Step = { label: string; step: { name: string; body?: Record<string, unknown> } };
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
@@ -197,57 +229,43 @@ export async function POST(request: Request) {
     );
   }
 
-  // Split into Track A (non-Pipedrive, run in parallel) and Track B (Pipedrive, sequential with delays)
-  type Step = { label: string; step: { name: string; body?: Record<string, unknown> } };
-  const trackA: Step[] = []; // non-Pipedrive: meta-ads, calendar, baserow — run all in parallel
-  const trackB: Step[] = []; // Pipedrive-dependent: sequential with 4s delays (except DB-only modes)
+  // 3 parallel tracks:
+  // Track A: non-Pipedrive (meta-ads, calendar, baserow) — all in Promise.all
+  // Track B: dashboard Pipedrive (daily-open → daily-won → alignment → metas → rollup)
+  // Track C: deals Pipedrive (deals-open → deals-won → presales)
+  // B and C hit different Pipedrive endpoints, safe to parallelize.
+  const trackA: Step[] = [];
+  const trackB: Step[] = [];
+  const trackC: Step[] = [];
 
   for (const fn of body.functions) {
     const steps = FUNCTION_MAP[fn];
     for (const step of steps) {
       const label = `${fn}:${step.body?.mode || step.name}`;
-      if (PIPEDRIVE_FUNCTIONS.has(fn)) {
+      if (PIPEDRIVE_DASHBOARD.has(fn)) {
         trackB.push({ label, step });
+      } else if (PIPEDRIVE_DEALS.has(fn)) {
+        trackC.push({ label, step });
       } else {
         trackA.push({ label, step });
       }
     }
   }
 
-  // Track A: all non-Pipedrive calls in parallel
-  const runTrackA = async (): Promise<FunctionResult[]> => {
-    if (trackA.length === 0) return [];
-    return Promise.all(
-      trackA.map(({ label, step }) => callEdgeFunction(supabaseUrl, supabaseKey, step, label)),
-    );
-  };
+  const [trackAResults, trackBResults, trackCResults] = await Promise.all([
+    // Track A: all non-Pipedrive in parallel
+    trackA.length > 0
+      ? Promise.all(trackA.map(({ label, step }) => callEdgeFunction(supabaseUrl, supabaseKey, step, label)))
+      : Promise.resolve([]),
+    // Track B: dashboard sequential with 2s delays
+    runSequentialTrack(trackB, supabaseUrl, supabaseKey),
+    // Track C: deals sequential with 2s delays (stagger 1s to avoid both tracks hitting Pipedrive at t=0)
+    trackC.length > 0
+      ? new Promise<FunctionResult[]>((resolve) => setTimeout(() => resolve(runSequentialTrack(trackC, supabaseUrl, supabaseKey)), 1000))
+      : Promise.resolve([]),
+  ]);
 
-  // Track B: Pipedrive calls sequential, 4s delay between real Pipedrive calls, no delay before DB-only
-  const runTrackB = async (): Promise<FunctionResult[]> => {
-    const results: FunctionResult[] = [];
-    let lastWasPipedrive = false;
-
-    for (const { label, step } of trackB) {
-      const mode = step.body?.mode as string | undefined;
-      const isDbOnly = mode ? DB_ONLY_MODES.has(mode) : false;
-
-      // Add delay only between consecutive real Pipedrive API calls (skip for DB-only)
-      if (!isDbOnly && lastWasPipedrive) {
-        await new Promise((r) => setTimeout(r, PIPEDRIVE_DELAY));
-      }
-
-      const result = await callEdgeFunction(supabaseUrl, supabaseKey, step, label);
-      results.push(result);
-
-      lastWasPipedrive = !isDbOnly;
-    }
-    return results;
-  };
-
-  // Run both tracks in parallel
-  const [trackAResults, trackBResults] = await Promise.all([runTrackA(), runTrackB()]);
-  const results = [...trackBResults, ...trackAResults];
-
+  const results = [...trackBResults, ...trackCResults, ...trackAResults];
   const hasErrors = results.some((r) => r.status === "error");
   return NextResponse.json({ results }, { status: hasErrors ? 207 : 200 });
 }
