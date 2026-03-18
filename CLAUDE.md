@@ -350,7 +350,16 @@ O botao sincroniza TODAS as abas de uma vez (nao so a aba atual). Usa modos **li
 - `deals-light`: pula `deals-lost` e `deals-flow` (muito pesados, timeout 504)
 - As funcoes pesadas rodam no **pg_cron a cada 2h**
 
-**Interleaving:** funcoes Pipedrive (dashboard, deals, presales) sao intercaladas com nao-Pipedrive (meta-ads, calendar, baserow) + delay 2s entre chamadas Pipedrive consecutivas para evitar rate limit 429.
+**Paralelizacao (2 tracks):**
+- **Track A (paralelo):** `meta-ads` + `calendar` + `baserow` — APIs independentes, rodam todos em `Promise.all`
+- **Track B (sequencial):** Pipedrive steps com delays de 4s entre chamadas reais. Modos DB-only (`metas`, `monthly-rollup`) NAO precisam de delay
+- Track A e B rodam em paralelo. Tempo total = `max(A, B)` ≈ **35-38s** (vs ~50s do interleaving antigo)
+
+**Retry:** cada chamada Edge Function tem `AbortSignal.timeout(30s)` + 1 retry automatico em caso de 504 ou timeout (espera 5s antes de retry)
+
+**Timer:** botao mostra segundos decorridos durante sync: `"Atualizando... (12s)"`
+
+**Timestamp:** apos sync, `lastUpdated` e salvo e passado para todas as views. Componente `DataSourceFooter` (em `ui.tsx`) renderiza `"Pipedrive · DD/MM/YYYY HH:MM"` no rodape de cada view
 
 **Apos sync:** limpa TODOS os caches do frontend. A aba atual re-busca dados imediatamente; outras abas buscam dados frescos ao serem acessadas.
 
