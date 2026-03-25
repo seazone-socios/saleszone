@@ -266,7 +266,8 @@ async function syncDailyByStatus(nektApiKey: string, supabase: any, status: stri
   const sql = `
     SELECT id, pipeline_id, status, etapa, canal, empreendimento,
            negocio_criado_em, ganho_em, data_de_perda,
-           data_de_qualificacao, data_da_reuniao, owner_id, motivo_da_perda
+           data_de_qualificacao, data_da_reuniao, owner_id, motivo_da_perda,
+           rd_source
     FROM nekt_silver.pipedrive_deals_readable
     WHERE pipeline_id = ${PIPELINE_ID} AND status = '${status}'
     ${dateFilter}
@@ -279,7 +280,20 @@ async function syncDailyByStatus(nektApiKey: string, supabase: any, status: stri
 
   const mkt = countDeals(deals, startDate, endDate, countsPerTab);
   console.log(`  ${status}: ${deals.length} deals, ${mkt} marketing`);
-  return writeDailyCounts(supabase, countsPerTab, startDate, endDate, status);
+  const result = await writeDailyCounts(supabase, countsPerTab, startDate, endDate, status);
+
+  // Para won: também armazena contagem paga (rd_source ILIKE '%paga%') com source='won_paga'
+  if (status === "won") {
+    const pagaDeals = deals.filter(d => (d.rd_source || "").toLowerCase().includes("paga"));
+    const countsPerTabPaga: Record<Tab, Map<string, number>> = {
+      mql: new Map(), sql: new Map(), opp: new Map(), won: new Map(),
+    };
+    const mktPaga = countDeals(pagaDeals, startDate, endDate, countsPerTabPaga);
+    console.log(`  won_paga: ${pagaDeals.length} deals, ${mktPaga} marketing`);
+    await writeDailyCounts(supabase, countsPerTabPaga, startDate, endDate, "won_paga");
+  }
+
+  return result;
 }
 
 // ---- Mode: alignment ----

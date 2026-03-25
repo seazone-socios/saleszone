@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     const startDate = `${monthPrefix}-01`;
 
     // Queries paralelas: Meta Ads (último snapshot + todos do mês para max spend) + Contagens + WON
-    const [metaRes, metaAllRes, countsRes, crossWonRes] = await Promise.all([
+    const [metaRes, metaAllRes, countsRes, crossWonRes, wonPagaRes, wonTodosRes] = await Promise.all([
       supabase
         .from("squad_meta_ads")
         .select("*")
@@ -49,12 +49,42 @@ export async function GET(req: NextRequest) {
         .limit(10000),
       supabase.rpc("get_emp_counts_summary", { p_start_date: startDate }),
       supabase.rpc("get_ad_won_cross_emp"),
+      // Won paga: contagem real via rd_source, pré-calculada no sync (source='won_paga')
+      supabase.from("squad_daily_counts")
+        .select("empreendimento, count")
+        .eq("tab", "won")
+        .eq("source", "won_paga")
+        .gte("date", startDate),
+      // Won todos: contagem direta da tabela (source='won'), evita dependência da RPC
+      supabase.from("squad_daily_counts")
+        .select("empreendimento, count")
+        .eq("tab", "won")
+        .eq("source", "won")
+        .gte("date", startDate),
     ]);
 
     if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
     if (metaAllRes.error) console.warn(`Meta all-month query error (non-fatal): ${metaAllRes.error.message}`);
     if (countsRes.error) console.warn(`Counts RPC error (non-fatal): ${countsRes.error.message}`);
     if (crossWonRes.error) console.warn(`Cross-emp WON query error (non-fatal): ${crossWonRes.error.message}`);
+    if (wonPagaRes.error) console.warn(`Won paga query error (non-fatal): ${wonPagaRes.error.message}`);
+
+    if (wonTodosRes.error) console.warn(`Won todos query error (non-fatal): ${wonTodosRes.error.message}`);
+
+    // Contagem real de wons de mídia paga por empreendimento (pré-calculada no sync via rd_source)
+    const wonPagaMap = new Map<string, number>();
+    for (const row of wonPagaRes.data || []) {
+      if (row.empreendimento) {
+        wonPagaMap.set(row.empreendimento, (wonPagaMap.get(row.empreendimento) || 0) + (row.count || 0));
+      }
+    }
+    // Contagem direta de wons todos (source='won') — evita double-count com won_paga na RPC
+    const wonTodosMap = new Map<string, number>();
+    for (const row of wonTodosRes.data || []) {
+      if (row.empreendimento) {
+        wonTodosMap.set(row.empreendimento, (wonTodosMap.get(row.empreendimento) || 0) + (row.count || 0));
+      }
+    }
 
     // Max spend_month/leads_month por ad em todos os snapshots do mês
     const adMaxSpend = new Map<string, { spend: number; leads: number }>();
@@ -147,13 +177,14 @@ export async function GET(req: NextRequest) {
 
         // Funil empreendimento: dados do mês (com filtro paid se aplicável)
         const counts = countsMapMonth.get(emp) || { mql: 0, sql: 0, opp: 0, won: 0 };
-        let empMql = counts.mql, empSql = counts.sql, empOpp = counts.opp, empWon = counts.won;
+        // WON: lê direto da tabela por source para evitar double-count com won_paga na RPC
+        let empMql = counts.mql, empSql = counts.sql, empOpp = counts.opp;
+        let empWon = paidOnly ? (wonPagaMap.get(emp) || 0) : (wonTodosMap.get(emp) || counts.won);
         if (paidOnly) {
           empMql = Math.min(counts.mql, metaLeads);
           const ratio = counts.mql > 0 ? empMql / counts.mql : 0;
           empSql = Math.round(counts.sql * ratio);
           empOpp = Math.round(counts.opp * ratio);
-          empWon = Math.round(counts.won * ratio);
         }
 
         // Leads = mesma lógica da aba Resultados: Meta Ads + MQLs de outros canais
