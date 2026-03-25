@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
           .from("squad_daily_counts")
           .select("date, count")
           .eq("tab", tab)
+          .neq("source", "won_paga")
           .gte("date", globalStart)
           .lte("date", globalEnd)
           .range(offset, offset + ps - 1),

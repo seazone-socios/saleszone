@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       supabase
         .from("squad_daily_counts")
         .select("date, tab, empreendimento, count")
+        .neq("source", "won_paga")
         .gte("date", startDate)
         .lte("date", today),
     ]);

@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       .from("squad_daily_counts")
       .select("date, empreendimento, count")
       .eq("tab", tab)
+      .neq("source", "won_paga")
       .gte("date", startDate)
       .lte("date", endDate);
 
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
           .from("squad_daily_counts")
           .select("date, empreendimento, count")
           .eq("tab", "mql")
+          .neq("source", "won_paga")
           .gte("date", monthStart)
           .lte("date", endDate)
       : null;
@@ -166,7 +168,7 @@ export async function GET(req: NextRequest) {
 
     const [nektRes, counts90Res] = await Promise.all([
       supabase.rpc("get_szi_meta", { meta_date: metaDateStr }).single(),
-      supabase.from("squad_daily_counts").select("tab, empreendimento, count").gte("date", startDate90).lte("date", endDate),
+      supabase.from("squad_daily_counts").select("tab, empreendimento, count").neq("source", "won_paga").gte("date", startDate90).lte("date", endDate),
     ]);
 
     let metaInfo: MetaInfo | undefined;

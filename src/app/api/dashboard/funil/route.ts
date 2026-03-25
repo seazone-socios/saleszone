@@ -127,6 +127,7 @@ export async function GET(req: NextRequest) {
         .from("squad_daily_counts")
         .select("tab, empreendimento, count")
         .in("tab", ["mql", "sql", "opp", "won"])
+        .neq("source", "won_paga")
         .gte("date", startDate),
       // Reserva/Contrato snapshot (sem filtro de data — estado atual dos stages)
       supabase

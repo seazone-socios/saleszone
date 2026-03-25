@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       .from("squad_daily_counts")
       .select("date, empreendimento, count")
       .eq("tab", tab)
+      .neq("source", "won_paga")
       .gte("date", startDate)
       .lte("date", endDate);
 
