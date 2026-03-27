@@ -1,6 +1,7 @@
 // MKTP (Marketplace) module
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { createSquadSupabaseAdmin } from "@/lib/squad/supabase";
 import { getModuleConfig } from "@/lib/modules";
 import { NUM_DAYS } from "@/lib/constants";
 import { generateDates } from "@/lib/dates";
@@ -21,126 +22,62 @@ export async function GET(req: NextRequest) {
   const tab = (req.nextUrl.searchParams.get("tab") as TabKey) || "mql";
   const filterParam = req.nextUrl.searchParams.get("filter");
   const paidOnly = filterParam === "paid";
+  const marketingOnly = filterParam === "marketing";
+  const ctwaOnly = filterParam === "ctwa";
+  const hasFilter = paidOnly || marketingOnly || ctwaOnly;
 
   try {
     const dates = generateDates();
     const startDate = dates[dates.length - 1].date;
     const endDate = dates[0].date;
-
-    // Fetch daily counts from Supabase
-    const countsPromise = supabase
-      .from("mktp_daily_counts")
-      .select("date, empreendimento, count")
-      .eq("tab", tab)
-      .gte("date", startDate)
-      .lte("date", endDate);
-
-    // Se paidOnly, buscar também MQL counts + Meta Ads leads para calcular ratio
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-
-    const mqlPromise = paidOnly && tab !== "mql"
-      ? supabase
-          .from("mktp_daily_counts")
-          .select("date, empreendimento, count")
-          .eq("tab", "mql")
-          .gte("date", monthStart)
-          .lte("date", endDate)
-      : null;
-
-    const metaPromise = paidOnly
-      ? supabase
-          .from("mktp_meta_ads")
-          .select("ad_id, empreendimento, leads_month")
-          .gte("snapshot_date", monthStart)
-      : null;
-
-    const [countsRes, mqlRes, metaRes] = await Promise.all([
-      countsPromise,
-      mqlPromise,
-      metaPromise,
-    ]);
-
-    if (countsRes.error) throw new Error(`Supabase error: ${countsRes.error.message}`);
-    const rows = countsRes.data || [];
-
-    // Calcular ratios paid por empreendimento
-    let paidRatios: Map<string, number> | null = null;
-    if (paidOnly) {
-      // Meta Ads leads por empreendimento (max leads_month por ad em todos os snapshots do mês)
-      const adMaxLeads = new Map<string, { empreendimento: string; leads: number }>();
-      if (metaRes?.data) {
-        for (const row of metaRes.data) {
-          const cur = adMaxLeads.get(row.ad_id);
-          const leads = row.leads_month || 0;
-          if (!cur || leads > cur.leads) {
-            adMaxLeads.set(row.ad_id, { empreendimento: row.empreendimento, leads });
-          }
-        }
-      }
-      const metaLeads = new Map<string, number>();
-      for (const ad of adMaxLeads.values()) {
-        const cur = metaLeads.get(ad.empreendimento) || 0;
-        metaLeads.set(ad.empreendimento, cur + ad.leads);
-      }
-      // MQL totais do mês por empreendimento
-      const mqlTotals = new Map<string, number>();
-      if (tab === "mql") {
-        // Para MQL, usar os próprios counts do mês
-        for (const row of rows) {
-          if (row.date >= monthStart) {
-            const cur = mqlTotals.get(row.empreendimento) || 0;
-            mqlTotals.set(row.empreendimento, cur + (row.count || 0));
-          }
-        }
-      } else if (mqlRes?.data) {
-        for (const row of mqlRes.data) {
-          const cur = mqlTotals.get(row.empreendimento) || 0;
-          mqlTotals.set(row.empreendimento, cur + (row.count || 0));
-        }
-      }
-
-      // ratio = min(mql, metaLeads) / mql — mesma lógica de funil/campanhas
-      paidRatios = new Map();
-      const allEmps = new Set([...mqlTotals.keys(), ...metaLeads.keys()]);
-      for (const emp of allEmps) {
-        const mql = mqlTotals.get(emp) || 0;
-        const meta = metaLeads.get(emp) || 0;
-        if (mql > 0) {
-          paidRatios.set(emp, Math.min(meta, mql) / mql);
-        } else {
-          paidRatios.set(emp, meta > 0 ? 1 : 0);
-        }
-      }
-    }
 
     // Build date index
     const dateIndex = new Map(dates.map((d, i) => [d.date, i]));
 
     // Build counts per empreendimento
     const empCounts = new Map<string, number[]>();
-    for (const row of rows) {
-      const idx = dateIndex.get(row.date);
-      if (idx === undefined) continue;
-      if (!empCounts.has(row.empreendimento)) {
-        empCounts.set(row.empreendimento, new Array(NUM_DAYS).fill(0));
+
+    {
+      // Always use mktp_deals for consistency across all filter modes
+      const admin = createSquadSupabaseAdmin();
+      const isWon = tab === "won";
+      const dateCol = tab === "won" ? "won_time" : tab === "opp" ? "reuniao_date" : tab === "sql" ? "qualificacao_date" : "add_time";
+
+      const deals = await paginate((o, ps) => {
+        let q = admin
+          .from("mktp_deals")
+          .select(`empreendimento, canal, rd_source, ${dateCol}, max_stage_order, status, lost_reason`)
+          .not("empreendimento", "is", null)
+          .gte(dateCol, startDate);
+        if (isWon) q = q.eq("status", "won");
+        if (ctwaOnly) {
+          q = q.eq("is_marketing", true).eq("rd_source", "Click To WhatsApp");
+        } else if (paidOnly) {
+          q = q.eq("is_marketing", true).ilike("rd_source", "%pag%");
+        } else if (marketingOnly) {
+          q = q.eq("is_marketing", true);
+        }
+        return q.range(o, o + ps - 1);
+      });
+
+      for (const d of deals) {
+        if (d.lost_reason === "Duplicado/Erro") continue;
+        const emp = d.empreendimento;
+        const dateStr = (d[dateCol] || "").substring(0, 10);
+        const idx = dateIndex.get(dateStr);
+        if (idx === undefined) continue;
+        if (!empCounts.has(emp)) empCounts.set(emp, new Array(NUM_DAYS).fill(0));
+        empCounts.get(emp)![idx] += 1;
       }
-      empCounts.get(row.empreendimento)![idx] += row.count;
     }
 
     // Map to squads — MKTP discovers empreendimentos from DB (60+ dynamic)
     const squads: SquadData[] = mc.squads.map((sq) => {
       const emps = sq.empreendimentos.length > 0 ? sq.empreendimentos : [...empCounts.keys()].sort();
       const sqRows = emps.map((emp) => {
-        let daily = empCounts.get(emp) || new Array(NUM_DAYS).fill(0);
-
-        // Aplicar ratio paid se necessário
-        if (paidRatios) {
-          const ratio = paidRatios.get(emp) ?? 0;
-          daily = daily.map((v) => Math.round(v * ratio));
-        }
-
-        // totalMes = sum of days in current month only
+        const daily = empCounts.get(emp) || new Array(NUM_DAYS).fill(0);
         let totalMes = 0;
         daily.forEach((v, i) => {
           if (dates[i] && dates[i].date >= monthStart) totalMes += v;
@@ -179,7 +116,9 @@ export async function GET(req: NextRequest) {
     let metaInfo: MetaInfo | undefined;
     const nektData = nektRes.data as { won_mktp_meta_pago: number; won_mktp_meta_direto: number } | null;
     if (nektData) {
-      const wonMetaTotal = (Number(nektData.won_mktp_meta_pago) || 0) + (Number(nektData.won_mktp_meta_direto) || 0);
+      const metaPago = Number(nektData.won_mktp_meta_pago) || 0;
+      const metaDireto = Number(nektData.won_mktp_meta_direto) || 0;
+      const wonMetaTotal = hasFilter ? metaPago : metaPago + metaDireto;
       const wonPerCloser = wonMetaTotal / TOTAL_CLOSERS;
 
       // Build per-squad 90d counts
@@ -256,4 +195,20 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function paginate(buildQuery: (offset: number, ps: number) => any): Promise<any[]> {
+  const rows: any[] = [];
+  let offset = 0;
+  const PS = 1000;
+  while (true) {
+    const { data, error } = await buildQuery(offset, PS);
+    if (error) throw new Error(`Supabase: ${error.message}`);
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < PS) break;
+    offset += PS;
+  }
+  return rows;
 }
