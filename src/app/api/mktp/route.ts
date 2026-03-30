@@ -134,15 +134,11 @@ export async function GET(req: NextRequest) {
       : null;
 
     const [nektRes, counts90Res, filteredDeals90] = await Promise.all([
-      (() => {
-        const srvKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const { createClient: cc } = require("@supabase/supabase-js");
-        const srvClient = srvKey ? cc(process.env.NEXT_PUBLIC_SUPABASE_URL!, srvKey) : supabase;
-        return srvClient.from("nekt_meta26_metas")
-          .select("won_mktp_meta_pago, won_mktp_meta_direto")
-          .eq("data", metaDateStr)
-          .single();
-      })(),
+      createSquadSupabaseAdmin()
+        .from("nekt_meta26_metas")
+        .select("won_mktp_meta_pago, won_mktp_meta_direto")
+        .eq("data", metaDateStr)
+        .single(),
       supabase.from("mktp_daily_counts").select("tab, empreendimento, count").gte("date", startDate90).lte("date", endDate),
       filteredRatioPromise,
     ]);
