@@ -6,7 +6,7 @@ const mc = getModuleConfig("szs");
 
 const CANAL_GROUP_TO_SQUAD: Record<string, number> = {
   Marketing: 1,
-  Parceiros: 2,
+  Parceiros: 2, "Ind. Corretor": 2, "Ind. Franquia": 2, "Ind. Outros Parceiros": 2,
   Mônica: 3, Expansão: 3, Spots: 3, Outros: 3,
 };
 
@@ -45,7 +45,9 @@ export const CIDADE_GROUPS = ["São Paulo", "Salvador", "Florianópolis", "Outro
 
 const CANAL_GROUP_FROM_ID: Record<string, string> = {
   "12": "Marketing",
-  "582": "Parceiros", "583": "Parceiros",
+  "582": "Ind. Corretor",
+  "583": "Ind. Franquia",
+  "2876": "Ind. Outros Parceiros",
   "1748": "Expansão",
   "4551": "Mônica",
   "3189": "Spots",
