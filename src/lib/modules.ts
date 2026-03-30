@@ -175,7 +175,7 @@ const DECOR_CONFIG: ModuleConfig = {
   squadCloserMap: { 1: [0, 1] },
   tablePrefix: "decor",
   apiBase: "/api/decor",
-  syncFunctions: [],
+  syncFunctions: ["decor-presales"],
 };
 
 // --- Registry ---

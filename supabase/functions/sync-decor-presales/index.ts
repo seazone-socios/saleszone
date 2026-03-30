@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
     const pipedriveToken = secretData;
 
     // 2. Read pre-sellers from config (pipeline 44 = Decor)
-    // Pre-vendedoras: Karoane, Izabela Soares, Karoline Borges
+    // Pre-vendedora: Rubia Lorena Santos
     const { data: pvRows, error: pvErr } = await supabase
       .from("config_pre_vendedores")
       .select("user_id, user_name")
