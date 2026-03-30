@@ -5,6 +5,7 @@ const META_API = "https://graph.facebook.com/v21.0"
 export async function GET(req: NextRequest) {
   const adId = req.nextUrl.searchParams.get("id")
   if (!adId) return NextResponse.json({ error: "id é obrigatório" }, { status: 400 })
+  if (!/^\d+$/.test(adId)) return NextResponse.json({ error: "id inválido" }, { status: 400 })
 
   const token = process.env.META_ADS_TOKEN || ""
   if (!token) return NextResponse.json({ error: "META_ADS_TOKEN não configurado" }, { status: 500 })

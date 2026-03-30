@@ -685,10 +685,13 @@ export function OtimizacaoView({ moduleId = "szi" }: { moduleId?: string }) {
                   </div>
                 )}
                 {!previewLoading && previewHtml && (
-                  <div
-                    style={{ display: "flex", justifyContent: "center", padding: 16 }}
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
-                  />
+                  <div style={{ display: "flex", justifyContent: "center", padding: 16 }}>
+                    <iframe
+                      srcDoc={previewHtml}
+                      sandbox=""
+                      style={{ border: "none", width: "100%", minHeight: 500 }}
+                    />
+                  </div>
                 )}
                 {!previewLoading && !previewHtml && (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "64px 20px", gap: 12 }}>
