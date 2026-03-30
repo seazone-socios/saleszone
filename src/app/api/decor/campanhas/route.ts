@@ -1,6 +1,7 @@
 // Decor (Decor) module
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { paginate } from "@/lib/paginate";
 import { getModuleConfig } from "@/lib/modules";
 import type { CampanhasData, CampanhasSquadSummary, CampanhasEmpSummary, MetaAdRow } from "@/lib/types";
 
@@ -37,32 +38,32 @@ export async function GET(req: NextRequest) {
     const startDate = `${monthPrefix}-01`;
 
     // Queries paralelas: Meta Ads (último snapshot + todos do mês para max spend) + Contagens + WON
-    const [metaRes, metaAllRes, countsRes, crossWonRes] = await Promise.all([
-      supabase
-        .from("decor_meta_ads")
-        .select("*")
-        .eq("snapshot_date", snapshotDate)
-        .order("spend", { ascending: false })
-        .limit(10000),
-      // Todos os snapshots do mês para calcular max spend_month/leads_month por ad
-      supabase
-        .from("decor_meta_ads")
-        .select("ad_id, spend_month, leads_month")
-        .gte("snapshot_date", startDate)
-        .limit(10000),
-      // TODO: Decor may need its own RPC for emp counts summary
+    const [metaData, metaAllData, countsRes, crossWonRes] = await Promise.all([
+      paginate((o, ps) =>
+        supabase
+          .from("decor_meta_ads")
+          .select("*")
+          .eq("snapshot_date", snapshotDate)
+          .order("spend", { ascending: false })
+          .range(o, o + ps - 1),
+      ),
+      paginate((o, ps) =>
+        supabase
+          .from("decor_meta_ads")
+          .select("ad_id, spend_month, leads_month")
+          .gte("snapshot_date", startDate)
+          .range(o, o + ps - 1),
+      ),
       supabase.rpc("get_decor_emp_counts_summary", { p_start_date: startDate }),
       supabase.rpc("get_decor_ad_won_cross_emp"),
     ]);
 
-    if (metaRes.error) throw new Error(`Supabase error: ${metaRes.error.message}`);
-    if (metaAllRes.error) console.warn(`Meta all-month query error (non-fatal): ${metaAllRes.error.message}`);
     if (countsRes.error) console.warn(`Counts RPC error (non-fatal): ${countsRes.error.message}`);
     if (crossWonRes.error) console.warn(`Cross-emp WON query error (non-fatal): ${crossWonRes.error.message}`);
 
     // Max spend_month/leads_month por ad em todos os snapshots do mês
     const adMaxSpend = new Map<string, { spend: number; leads: number }>();
-    for (const row of metaAllRes.data || []) {
+    for (const row of metaAllData || []) {
       const cur = adMaxSpend.get(row.ad_id);
       const spend = Number(row.spend_month) || 0;
       const leads = row.leads_month || 0;
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Aplicar max spend/leads nos ads do snapshot mais recente
-    const ads = (metaRes.data || []).map((ad) => {
+    const ads = (metaData || []).map((ad) => {
       const maxData = adMaxSpend.get(ad.ad_id);
       return {
         ...ad,

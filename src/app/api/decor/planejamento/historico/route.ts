@@ -11,14 +11,14 @@ export async function GET() {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const supabase = createClient(supabaseUrl, anonKey);
 
-    // Paginar RPC get_decor_historico_campanhas
+    // Paginar RPC get_decor_historico_campanhas (may not exist yet)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const historicoData: any[] = [];
     let offset = 0;
     while (true) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.rpc as any)("get_decor_historico_campanhas").range(offset, offset + 999);
-      if (error) throw new Error(`RPC error: ${error.message}`);
+      if (error) { console.warn(`[decor] get_decor_historico_campanhas RPC not available: ${error.message}`); break; }
       if (!data || data.length === 0) break;
       historicoData.push(...data);
       if (data.length < 1000) break;

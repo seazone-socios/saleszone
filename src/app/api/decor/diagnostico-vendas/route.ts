@@ -1,6 +1,7 @@
 // Decor (Decor) module
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { paginate } from "@/lib/paginate";
 import { getModuleConfig } from "@/lib/modules";
 import type { DiagVendasData, DiagVendasDealRow, DiagVendasCloserSummary, VendasSeveridade } from "@/lib/types";
 
@@ -45,24 +46,13 @@ export async function GET() {
   try {
     const now = new Date();
 
-    // Paginate decor_deals WHERE status = 'open'
-    const allRows: any[] = [];
-    let offset = 0;
-    const PAGE_SIZE = 1000;
-
-    while (true) {
-      const { data, error } = await supabase
+    const allRows = await paginate((o, ps) =>
+      supabase
         .from("decor_deals")
         .select("deal_id, title, owner_name, empreendimento, stage_order, last_activity_date, next_activity_date, add_time, lost_reason")
         .eq("status", "open")
-        .range(offset, offset + PAGE_SIZE - 1);
-
-      if (error) throw new Error(`Supabase error: ${error.message}`);
-      if (!data || data.length === 0) break;
-      allRows.push(...data);
-      if (data.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
-    }
+        .range(o, o + ps - 1),
+    );
 
     // Filter to closers only, exclude Agendado (7) and No Show/Reagendamento (8)
     const closerSet = new Set(V_COLS);
