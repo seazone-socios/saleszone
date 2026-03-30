@@ -151,7 +151,7 @@ function ClosersTable({ closers }: { closers: NoShowCloserRow[] }) {
               <th style={{ ...thStyle, textAlign: "right" }}>Agendados</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Cancelados</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Taxa</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Media 7d</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Média 7d</th>
             </tr>
           </thead>
           <tbody>
@@ -201,7 +201,7 @@ function EventsTable({ events }: { events: NoShowEventRow[] }) {
               <th style={thStyle}>Hora</th>
               <th style={thStyle}>Closer</th>
               <th style={thStyle}>Empreendimento</th>
-              <th style={thStyle}>Titulo</th>
+              <th style={thStyle}>Título</th>
             </tr>
           </thead>
           <tbody>
@@ -238,7 +238,7 @@ export function NoShowView({ data, loading, lastUpdated, days, onDaysChange }: P
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Period selector */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <label style={{ fontSize: "12px", color: "#6B6E84", fontWeight: 500 }}>Periodo:</label>
+        <label style={{ fontSize: "12px", color: "#6B6E84", fontWeight: 500 }}>Período:</label>
         <div style={{ display: "flex", gap: "4px", backgroundColor: "#f1f5f9", borderRadius: "8px", padding: "3px" }}>
           {PERIOD_OPTIONS.map((opt) => (
             <button

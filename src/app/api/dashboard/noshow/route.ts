@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { paginate } from "@/lib/paginate";
 import type { NoShowData, NoShowEventRow, NoShowCloserRow, NoShowSummary, NoShowAlert } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 1000;
 
 interface CalEvent {
   closer_email: string;
@@ -14,27 +13,6 @@ interface CalEvent {
   titulo: string;
   empreendimento: string | null;
   cancelou: boolean;
-}
-
-async function paginateCalendarEvents(cutoffStr: string): Promise<CalEvent[]> {
-  const all: CalEvent[] = [];
-  let offset = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("squad_calendar_events")
-      .select("closer_email, closer_name, dia, hora, titulo, empreendimento, cancelou")
-      .gte("dia", cutoffStr)
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    if (error) throw new Error(`Calendar query error: ${error.message}`);
-    if (!data || data.length === 0) break;
-    all.push(...(data as CalEvent[]));
-    if (data.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-
-  return all;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -55,7 +33,13 @@ export async function GET(request: NextRequest) {
     const todayStr = now.toISOString().split("T")[0];
 
     // ── 1. Fetch all calendar events in period
-    const allEvents = await paginateCalendarEvents(cutoffStr);
+    const allEvents: CalEvent[] = await paginate((o, ps) =>
+      supabase
+        .from("squad_calendar_events")
+        .select("closer_email, closer_name, dia, hora, titulo, empreendimento, cancelou")
+        .gte("dia", cutoffStr)
+        .range(o, o + ps - 1)
+    );
 
     // Only past events (up to today) — future events can't have no-shows
     const pastEvents = allEvents.filter((e) => e.dia <= todayStr);
