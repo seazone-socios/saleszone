@@ -650,8 +650,8 @@ export function AcompanhamentoView({ data, activeTab, setActiveTab, loading, las
                       <td style={{ ...cellStyle, color: T.cinza700 }}>
                         <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>
                           <Tag color={clr}>{sq.marketing}</Tag>
-                          <Tag color={T.cinza600}>{sq.preVenda.split(" ")[0]}</Tag>
-                          <Tag color={T.cinza600}>{sq.venda.split(" ")[0]}</Tag>
+                          <Tag color={T.cinza600}>{(() => { const p = sq.preVenda.split(" "); return p.length > 1 ? p[0] + " " + p[p.length - 1][0] + "." : p[0]; })()}</Tag>
+                          <Tag color={T.cinza600}>{(() => { const p = sq.venda.split(" "); return p.length > 1 ? p[0] + " " + p[p.length - 1][0] + "." : p[0]; })()}</Tag>
                         </div>
                       </td>
                     )}
