@@ -7,7 +7,6 @@ import { NUM_DAYS } from "@/lib/constants";
 import { generateDates } from "@/lib/dates";
 import type { TabKey, AcompanhamentoData, SquadData, MetaInfo } from "@/lib/types";
 import { paginate } from "@/lib/paginate";
-import { getMktpCanalName } from "@/lib/mktp-utils";
 
 const mc = getModuleConfig("mktp");
 
@@ -68,12 +67,12 @@ export async function GET(req: NextRequest) {
 
       for (const d of deals) {
         if (d.lost_reason === "Duplicado/Erro") continue;
-        const canalName = getMktpCanalName(d.canal);
+        const emp = d.empreendimento;
         const dateStr = (d[dateCol] || "").substring(0, 10);
         const idx = dateIndex.get(dateStr);
         if (idx === undefined) continue;
-        if (!empCounts.has(canalName)) empCounts.set(canalName, new Array(NUM_DAYS).fill(0));
-        empCounts.get(canalName)![idx] += 1;
+        if (!empCounts.has(emp)) empCounts.set(emp, new Array(NUM_DAYS).fill(0));
+        empCounts.get(emp)![idx] += 1;
       }
     }
 
@@ -134,15 +133,7 @@ export async function GET(req: NextRequest) {
       : null;
 
     const [nektRes, counts90Res, filteredDeals90] = await Promise.all([
-      (() => {
-        const srvKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const { createClient: cc } = require("@supabase/supabase-js");
-        const srvClient = srvKey ? cc(process.env.NEXT_PUBLIC_SUPABASE_URL!, srvKey) : supabase;
-        return srvClient.from("nekt_meta26_metas")
-          .select("won_mktp_meta_pago, won_mktp_meta_direto")
-          .eq("data", metaDateStr)
-          .single();
-      })(),
+      supabase.rpc("get_mktp_meta", { meta_date: metaDateStr }).single(),
       supabase.from("mktp_daily_counts").select("tab, empreendimento, count").gte("date", startDate90).lte("date", endDate),
       filteredRatioPromise,
     ]);
@@ -155,27 +146,43 @@ export async function GET(req: NextRequest) {
       const wonMetaTotal = hasFilter ? metaPago : metaPago + metaDireto;
       const wonPerCloser = wonMetaTotal / TOTAL_CLOSERS;
 
-      // MKTP has 1 squad — all deals go to squad 1
+      // Build per-squad 90d counts
+      const squadEmpSets = new Map<number, Set<string>>();
+      for (const sq of mc.squads) {
+        const emps = sq.empreendimentos.length > 0 ? sq.empreendimentos : [...empCounts.keys()].sort();
+        squadEmpSets.set(sq.id, new Set(emps));
+      }
+
       const squadCounts = new Map<number, Record<string, number>>();
       for (const sq of mc.squads) {
         squadCounts.set(sq.id, { mql: 0, sql: 0, opp: 0, won: 0 });
       }
-      const sqId = mc.squads[0]?.id || 1;
 
       if (hasFilter && filteredDeals90) {
+        // Ratios filtrados: contar MQL/SQL/OPP/WON a partir de mktp_deals (max_stage_order)
         for (const d of filteredDeals90) {
           if (d.lost_reason === "Duplicado/Erro") continue;
+          const emp = d.empreendimento;
           const mso = d.max_stage_order || 0;
-          const c = squadCounts.get(sqId)!;
-          if (mso >= STAGE_THRESHOLDS.mql) c.mql++;
-          if (mso >= STAGE_THRESHOLDS.sql) c.sql++;
-          if (mso >= STAGE_THRESHOLDS.opp) c.opp++;
-          if (d.status === "won") c.won++;
+          for (const sq of mc.squads) {
+            if (squadEmpSets.get(sq.id)!.has(emp)) {
+              const c = squadCounts.get(sq.id)!;
+              if (mso >= STAGE_THRESHOLDS.mql) c.mql++;
+              if (mso >= STAGE_THRESHOLDS.sql) c.sql++;
+              if (mso >= STAGE_THRESHOLDS.opp) c.opp++;
+              if (d.status === "won") c.won++;
+            }
+          }
         }
       } else {
+        // Geral: ratios de mktp_daily_counts (todos os canais)
         for (const r of counts90Res.data || []) {
-          const c = squadCounts.get(sqId)!;
-          if (r.tab in c) c[r.tab] += r.count || 0;
+          for (const sq of mc.squads) {
+            if (squadEmpSets.get(sq.id)!.has(r.empreendimento)) {
+              const c = squadCounts.get(sq.id)!;
+              if (r.tab in c) c[r.tab] += r.count || 0;
+            }
+          }
         }
       }
 
