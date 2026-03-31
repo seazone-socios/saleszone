@@ -256,11 +256,10 @@ export function computePerformanceRolling(rows: NektRow[]): AdPerformance[] {
 
     // Fase pós-OPP: se rolling MQL/SQL continua caro, PAUSAR
     if (!pausedBySpendCap && ad_status !== "PAUSAR" && base.dias_ativos >= cfg.checkpoints.opp) {
-      const sql_7d = sumKey(rows7d, "sql")
       const costMql7d = mql_7d > 0 ? spend_7d / mql_7d : Infinity
-      const costSql7d = sql_7d > 0 ? spend_7d / sql_7d : Infinity
+      const costSql14d = sql_14d > 0 ? spend_14d / sql_14d : Infinity
       const mqlRollingBad = isFinite(costMql7d) && costMql7d > cfg.scoring.mql_meta
-      const sqlRollingBad = isFinite(costSql7d) && costSql7d > cfg.scoring.sql_meta
+      const sqlRollingBad = isFinite(costSql14d) && costSql14d > cfg.scoring.sql_meta
       if (mqlRollingBad || sqlRollingBad) ad_status = "PAUSAR"
     }
 
